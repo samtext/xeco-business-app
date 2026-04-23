@@ -47,7 +47,7 @@ export default function SignInPage() {
           <div className="max-w-md mx-auto">
             <div className="flex items-center gap-6">
               <Link 
-                href="/auth" 
+                href="/" 
                 className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
               >
                 <ArrowLeft className="w-5 h-5 text-white" />
