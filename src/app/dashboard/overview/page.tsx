@@ -4,286 +4,265 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   TrendingUp,
-  TrendingDown,
-  ArrowUpRight,
-  ArrowDownRight,
-  RefreshCw,
   AlertTriangle,
   Zap,
-  Users,
-  Clock,
-  ChevronRight,
   Phone,
   Wifi,
   ShoppingCart,
   CreditCard,
+  RefreshCw,
+  Users,
+  ChevronRight,
 } from 'lucide-react';
 
-// Mock data - will come from API
-const mockMetrics = {
-  floatBalance: 245680,
-  accountBalance: 189500,
-  lastTopUp: 50000,
-  
+type ServiceType = 'payment_collection' | 'airtime';
+
+// Airtime-specific mock data
+const airtimeData = {
+  aggregatorFloat: 89200,
+  tillBalance: 45200,
+  today: {
+    sales: 8750,
+    profit: 1200,
+    profitMargin: 13.7,
+    transactionCount: 35,
+    salesChange: 8.5,
+    profitChange: 15.2,
+  },
+  lowStockAlerts: [
+    { network: 'Safaricom', denomination: 'KES 100', remaining: 2 },
+    { network: 'Airtel', denomination: 'KES 50', remaining: 5 },
+  ],
+  topNetworks: [
+    { network: 'Safaricom', sales: 5500, percentage: 63 },
+    { network: 'Airtel', sales: 2500, percentage: 29 },
+    { network: 'Telkom', sales: 750, percentage: 8 },
+  ],
+  recentTransactions: [
+    { id: 'a1', type: 'airtime', network: 'Safaricom', amount: 100, profit: 5, phone: '0723123456', time: '2 min ago', status: 'completed' },
+    { id: 'a2', type: 'airtime', network: 'Airtel', amount: 50, profit: 3, phone: '0712123456', time: '15 min ago', status: 'completed' },
+    { id: 'a3', type: 'airtime', network: 'Safaricom', amount: 250, profit: 12, phone: '0798123456', time: '30 min ago', status: 'completed' },
+    { id: 'a4', type: 'airtime', network: 'Telkom', amount: 20, profit: 1.5, phone: '0741123456', time: '1 hour ago', status: 'completed' },
+    { id: 'a5', type: 'airtime', network: 'Safaricom', amount: 50, profit: 2.5, phone: '0711345678', time: '2 hours ago', status: 'pending' },
+  ],
+};
+
+// Payment-specific mock data
+const paymentData = {
+  tillBalance: 245680,
   today: {
     revenue: 12750,
     profit: 3200,
     profitMargin: 25.1,
     transactionCount: 47,
-    revenueChange: 15.5,  // % change from yesterday
+    revenueChange: 15.5,
     profitChange: 22.3,
   },
-  
-  thisWeek: {
-    revenue: 89400,
-    profit: 22400,
-    transactionCount: 320,
-  },
-  
-  lowStockAlerts: [
-    { network: 'Safaricom', denomination: 'KES 100', remaining: 2 },
-    { network: 'Airtel', denomination: 'KES 50', remaining: 5 },
-  ],
-  
-  topNetworks: [
-    { network: 'Safaricom', sales: 8500, percentage: 68 },
-    { network: 'Airtel', sales: 3500, percentage: 28 },
-    { network: 'Telkom', sales: 500, percentage: 4 },
-  ],
-  
+  pendingSettlements: 4500,
+  settledToday: 8200,
   recentTransactions: [
-    {
-      id: 'txn_1',
-      type: 'airtime_sale' as const,
-      network: 'Safaricom',
-      amount: 100,
-      profit: 5,
-      phone: '0723123456',
-      timestamp: '2 min ago',
-      status: 'completed' as const,
-    },
-    {
-      id: 'txn_2',
-      type: 'airtime_sale' as const,
-      network: 'Airtel',
-      amount: 50,
-      profit: 3,
-      phone: '0712123456',
-      timestamp: '15 min ago',
-      status: 'completed' as const,
-    },
-    {
-      id: 'txn_3',
-      type: 'stk_payment' as const,
-      description: 'Book Purchase - Atomic Habits',
-      amount: 500,
-      profit: 150,
-      phone: '0705123456',
-      timestamp: '1 hour ago',
-      status: 'completed' as const,
-    },
-    {
-      id: 'txn_4',
-      type: 'c2b_received' as const,
-      description: 'Till #567890',
-      amount: 1000,
-      profit: 200,
-      phone: '0798123456',
-      timestamp: '2 hours ago',
-      status: 'completed' as const,
-    },
-    {
-      id: 'txn_5',
-      type: 'airtime_sale' as const,
-      network: 'Telkom',
-      amount: 20,
-      profit: 1.5,
-      phone: '0741123456',
-      timestamp: '3 hours ago',
-      status: 'pending' as const,
-    },
+    { id: 'p1', type: 'stk', description: 'Atomic Habits - Book', amount: 500, profit: 150, phone: '0705123456', time: '2 min ago', status: 'completed' },
+    { id: 'p2', type: 'c2b', description: 'Till #567890', amount: 1000, profit: 200, phone: '0798123456', time: '15 min ago', status: 'completed' },
+    { id: 'p3', type: 'stk', description: 'Rich Dad Poor Dad', amount: 450, profit: 150, phone: '0728987654', time: '1 hour ago', status: 'completed' },
+    { id: 'p4', type: 'c2b', description: 'Till #567890', amount: 2500, profit: 500, phone: '0700234567', time: '2 hours ago', status: 'completed' },
+    { id: 'p5', type: 'stk', description: 'The Psychology of Money', amount: 600, profit: 180, phone: '0734123456', time: '3 hours ago', status: 'pending' },
   ],
-  
-  peakHours: [
-    { hour: '8-10 AM', transactions: 45 },
-    { hour: '12-2 PM', transactions: 82 },
-    { hour: '5-8 PM', transactions: 128 },
+  topCustomers: [
+    { name: 'John M.', phone: '0705123456', purchases: 12, spent: 6500 },
+    { name: 'Sarah K.', phone: '0728987654', purchases: 8, spent: 4200 },
+    { name: 'Peter W.', phone: '0734123456', purchases: 6, spent: 3100 },
   ],
 };
 
 export default function OverviewPage() {
+  const [serviceType, setServiceType] = useState<ServiceType>('payment_collection');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [metrics, setMetrics] = useState(mockMetrics);
+
+  // Detect service type
+  useEffect(() => {
+    const storedType = localStorage.getItem('serviceType') as ServiceType;
+    if (storedType) {
+      setServiceType(storedType);
+    }
+  }, []);
+
+  const isAirtime = serviceType === 'airtime';
+  const data = isAirtime ? airtimeData : paymentData;
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    setTimeout(() => {
-      setIsRefreshing(false);
-      // In real app, fetch new data here
-    }, 1000);
+    setTimeout(() => setIsRefreshing(false), 1000);
   };
 
-  const getTransactionIcon = (type: string) => {
-    switch (type) {
-      case 'airtime_sale':
-        return <Wifi className="w-4 h-4 text-blue-600" />;
-      case 'stk_payment':
-        return <ShoppingCart className="w-4 h-4 text-green-600" />;
-      case 'c2b_received':
-        return <CreditCard className="w-4 h-4 text-orange-600" />;
-      default:
-        return <Zap className="w-4 h-4 text-gray-600" />;
-    }
-  };
-
-  const getTransactionColor = (type: string) => {
-    switch (type) {
-      case 'airtime_sale': return 'bg-blue-50 border-blue-200';
-      case 'stk_payment': return 'bg-green-50 border-green-200';
-      case 'c2b_received': return 'bg-orange-50 border-orange-200';
-      default: return 'bg-gray-50 border-gray-200';
-    }
-  };
-
-  return (
-    <div className="p-4 space-y-4">
-      
-      {/* Quick Insight Banner */}
-      <div className="bg-gradient-to-r from-[#8B1D1D] to-[#A02323] rounded-xl p-4 text-white">
-        <div className="flex items-center justify-between">
+  // =============================================
+  // AIRTIME DASHBOARD
+  // =============================================
+  if (isAirtime) {
+    return (
+      <div className="p-4 space-y-4">
+        {/* Insight Banner */}
+        <div className="bg-gradient-to-r from-blue-800 to-blue-600 rounded-xl p-4 text-white">
           <div className="flex items-center gap-2">
             <TrendingUp className="w-5 h-5" />
             <p className="text-sm font-medium">
-              You've made <span className="font-bold">22% more profit</span> than yesterday!
+              Sales up <span className="font-bold">{airtimeData.today.salesChange}%</span> from yesterday!
             </p>
           </div>
-          <ArrowUpRight className="w-5 h-5" />
         </div>
-      </div>
 
-      {/* Today's Metrics Cards */}
-      <div className="grid grid-cols-2 gap-3">
-        {/* Revenue Card */}
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <p className="text-xs text-gray-500 mb-1">Today's Sales</p>
-          <p className="text-xl font-bold text-gray-900">
-            KES {metrics.today.revenue.toLocaleString()}
-          </p>
-          <div className="flex items-center gap-1 mt-1">
-            {metrics.today.revenueChange > 0 ? (
-              <TrendingUp className="w-3 h-3 text-green-600" />
-            ) : (
-              <TrendingDown className="w-3 h-3 text-red-600" />
-            )}
-            <span className={`text-xs font-medium ${
-              metrics.today.revenueChange > 0 ? 'text-green-600' : 'text-red-600'
-            }`}>
-              {metrics.today.revenueChange > 0 ? '+' : ''}{metrics.today.revenueChange}%
-            </span>
-            <span className="text-xs text-gray-400">vs yesterday</span>
+        {/* Airtime Metrics */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+            <p className="text-xs text-gray-500 mb-1">Today's Sales</p>
+            <p className="text-xl font-bold text-gray-900">KES {airtimeData.today.sales.toLocaleString()}</p>
+            <p className="text-xs text-green-600 mt-1">↑ {airtimeData.today.salesChange}%</p>
+          </div>
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+            <p className="text-xs text-gray-500 mb-1">Today's Profit</p>
+            <p className="text-xl font-bold text-green-600">KES {airtimeData.today.profit.toLocaleString()}</p>
+            <p className="text-xs text-green-600 mt-1">↑ {airtimeData.today.profitChange}%</p>
+          </div>
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+            <p className="text-xs text-gray-500 mb-1">Transactions</p>
+            <p className="text-xl font-bold text-gray-900">{airtimeData.today.transactionCount}</p>
+          </div>
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+            <p className="text-xs text-gray-500 mb-1">Margin</p>
+            <p className="text-xl font-bold text-blue-600">{airtimeData.today.profitMargin}%</p>
           </div>
         </div>
 
-        {/* Profit Card */}
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <p className="text-xs text-gray-500 mb-1">Today's Profit</p>
-          <p className="text-xl font-bold text-green-600">
-            KES {metrics.today.profit.toLocaleString()}
-          </p>
-          <div className="flex items-center gap-1 mt-1">
-            {metrics.today.profitChange > 0 ? (
-              <TrendingUp className="w-3 h-3 text-green-600" />
-            ) : (
-              <TrendingDown className="w-3 h-3 text-red-600" />
-            )}
-            <span className={`text-xs font-medium ${
-              metrics.today.profitChange > 0 ? 'text-green-600' : 'text-red-600'
-            }`}>
-              {metrics.today.profitChange > 0 ? '+' : ''}{metrics.today.profitChange}%
-            </span>
-            <span className="text-xs text-gray-400">vs yesterday</span>
-          </div>
-        </div>
-
-        {/* Transactions Card */}
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <p className="text-xs text-gray-500 mb-1">Transactions</p>
-          <p className="text-xl font-bold text-gray-900">
-            {metrics.today.transactionCount}
-          </p>
-          <div className="flex items-center gap-2 mt-1">
-            <Users className="w-3 h-3 text-gray-400" />
-            <span className="text-xs text-gray-400">Today</span>
-          </div>
-        </div>
-
-        {/* Profit Margin Card */}
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <p className="text-xs text-gray-500 mb-1">Profit Margin</p>
-          <p className="text-xl font-bold text-[#8B1D1D]">
-            {metrics.today.profitMargin}%
-          </p>
-          <div className="flex items-center gap-2 mt-1">
-            <Clock className="w-3 h-3 text-gray-400" />
-            <span className="text-xs text-gray-400">Average</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Low Stock Alerts (Airtime specific) */}
-      {metrics.lowStockAlerts.length > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <AlertTriangle className="w-5 h-5 text-red-600" />
-            <h3 className="font-semibold text-red-900">Low Stock Alert</h3>
-          </div>
-          <div className="space-y-2">
-            {metrics.lowStockAlerts.map((alert, index) => (
-              <div key={index} className="flex items-center justify-between bg-white rounded-lg p-3">
+        {/* Low Stock Alerts */}
+        {airtimeData.lowStockAlerts.length > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle className="w-5 h-5 text-red-600" />
+              <h3 className="font-semibold text-red-900">Low Stock Alert</h3>
+            </div>
+            {airtimeData.lowStockAlerts.map((alert, i) => (
+              <div key={i} className="flex items-center justify-between bg-white rounded-lg p-3 mb-2">
                 <div>
                   <p className="font-medium text-gray-900">{alert.network}</p>
                   <p className="text-sm text-gray-500">{alert.denomination}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-bold text-red-600">{alert.remaining} left</p>
-                  <Link href="/dashboard/airtime" className="text-xs text-[#8B1D1D] hover:underline">
-                    Restock →
-                  </Link>
+                  <Link href="/dashboard/airtime" className="text-xs text-blue-600 hover:underline">Restock →</Link>
                 </div>
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Top Networks (Airtime specific) */}
-      <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-gray-900">Top Networks Today</h3>
-          <Link href="/dashboard/stats" className="text-xs text-[#8B1D1D] hover:underline">
-            View All
-          </Link>
-        </div>
-        <div className="space-y-3">
-          {metrics.topNetworks.map((network, index) => (
-            <div key={index}>
+        {/* Top Networks */}
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+          <h3 className="font-semibold text-gray-900 mb-3">Top Networks Today</h3>
+          {airtimeData.topNetworks.map((network, i) => (
+            <div key={i} className="mb-3">
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2">
                   <Phone className="w-4 h-4 text-gray-400" />
-                  <span className="text-sm font-medium text-gray-700">{network.network}</span>
+                  <span className="text-sm font-medium">{network.network}</span>
                 </div>
-                <span className="text-sm text-gray-500">
-                  KES {network.sales.toLocaleString()} ({network.percentage}%)
-                </span>
+                <span className="text-sm text-gray-500">KES {network.sales.toLocaleString()} ({network.percentage}%)</span>
               </div>
               <div className="w-full bg-gray-100 rounded-full h-2">
-                <div
-                  className="bg-[#8B1D1D] h-2 rounded-full"
-                  style={{ width: `${network.percentage}%` }}
-                />
+                <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${network.percentage}%` }} />
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Recent Airtime Transactions */}
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-gray-900">Recent Sales</h3>
+            <Link href="/dashboard/transactions" className="text-xs text-blue-600 flex items-center gap-1">
+              See All <ChevronRight className="w-3 h-3" />
+            </Link>
+          </div>
+          {airtimeData.recentTransactions.map((txn) => (
+            <div key={txn.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                  <Wifi className="w-4 h-4 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{txn.network} KES {txn.amount}</p>
+                  <p className="text-xs text-gray-500">{txn.phone}</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-sm font-semibold text-green-600">+KES {txn.profit}</p>
+                <p className="text-xs text-gray-400">{txn.time}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Quick Action */}
+        <Link href="/dashboard/airtime" className="block w-full bg-blue-600 text-white text-center py-3.5 rounded-lg font-bold shadow-lg active:scale-95 transition-transform">
+          📦 Manage Stock
+        </Link>
+
+        {/* Refresh */}
+        <button onClick={handleRefresh} className="w-full text-sm text-gray-400 py-2 flex items-center justify-center gap-2">
+          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          {isRefreshing ? 'Refreshing...' : 'Pull to refresh'}
+        </button>
+      </div>
+    );
+  }
+
+  // =============================================
+  // PAYMENT COLLECTION DASHBOARD
+  // =============================================
+  return (
+    <div className="p-4 space-y-4">
+      {/* Insight Banner */}
+      <div className="bg-gradient-to-r from-[#8B1D1D] to-[#A02323] rounded-xl p-4 text-white">
+        <div className="flex items-center gap-2">
+          <TrendingUp className="w-5 h-5" />
+          <p className="text-sm font-medium">
+            You've made <span className="font-bold">{paymentData.today.profitChange}% more profit</span> than yesterday!
+          </p>
+        </div>
+      </div>
+
+      {/* Payment Metrics */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+          <p className="text-xs text-gray-500 mb-1">Today's Revenue</p>
+          <p className="text-xl font-bold text-gray-900">KES {paymentData.today.revenue.toLocaleString()}</p>
+          <p className="text-xs text-green-600 mt-1">↑ {paymentData.today.revenueChange}%</p>
+        </div>
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+          <p className="text-xs text-gray-500 mb-1">Today's Profit</p>
+          <p className="text-xl font-bold text-green-600">KES {paymentData.today.profit.toLocaleString()}</p>
+          <p className="text-xs text-green-600 mt-1">↑ {paymentData.today.profitChange}%</p>
+        </div>
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+          <p className="text-xs text-gray-500 mb-1">Transactions</p>
+          <p className="text-xl font-bold text-gray-900">{paymentData.today.transactionCount}</p>
+        </div>
+        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+          <p className="text-xs text-gray-500 mb-1">Margin</p>
+          <p className="text-xl font-bold text-[#8B1D1D]">{paymentData.today.profitMargin}%</p>
+        </div>
+      </div>
+
+      {/* Settlement Status */}
+      <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+        <h3 className="font-semibold text-gray-900 mb-3">Settlements</h3>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-green-50 rounded-lg p-3">
+            <p className="text-xs text-green-600">Settled Today</p>
+            <p className="text-lg font-bold text-green-900">KES {paymentData.settledToday.toLocaleString()}</p>
+          </div>
+          <div className="bg-yellow-50 rounded-lg p-3">
+            <p className="text-xs text-yellow-600">Pending</p>
+            <p className="text-lg font-bold text-yellow-900">KES {paymentData.pendingSettlements.toLocaleString()}</p>
+          </div>
         </div>
       </div>
 
@@ -291,108 +270,60 @@ export default function OverviewPage() {
       <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-gray-900">Recent Transactions</h3>
-          <Link
-            href="/dashboard/transactions"
-            className="flex items-center gap-1 text-xs text-[#8B1D1D] hover:underline"
-          >
+          <Link href="/dashboard/transactions" className="text-xs text-[#8B1D1D] flex items-center gap-1">
             See All <ChevronRight className="w-3 h-3" />
           </Link>
         </div>
-        <div className="space-y-2">
-          {metrics.recentTransactions.slice(0, 5).map((txn) => (
-            <div
-              key={txn.id}
-              className={`flex items-center justify-between p-3 rounded-lg border ${getTransactionColor(txn.type)}`}
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-sm">
-                  {getTransactionIcon(txn.type)}
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-900">
-                    {txn.type === 'airtime_sale' && `${txn.network} Airtime`}
-                    {txn.type === 'stk_payment' && txn.description}
-                    {txn.type === 'c2b_received' && txn.description}
-                  </p>
-                  <p className="text-xs text-gray-500">{txn.phone}</p>
-                </div>
+        {paymentData.recentTransactions.map((txn) => (
+          <div key={txn.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+            <div className="flex items-center gap-3">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${txn.type === 'stk' ? 'bg-green-100' : 'bg-orange-100'}`}>
+                {txn.type === 'stk' ? <ShoppingCart className="w-4 h-4 text-green-600" /> : <CreditCard className="w-4 h-4 text-orange-600" />}
               </div>
-              <div className="text-right">
-                <p className="text-sm font-semibold text-gray-900">
-                  KES {txn.amount}
-                </p>
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-green-600">+KES {txn.profit}</span>
-                  <span className="text-xs text-gray-400">{txn.timestamp}</span>
-                </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900">{txn.description}</p>
+                <p className="text-xs text-gray-500">{txn.phone}</p>
               </div>
             </div>
-          ))}
-        </div>
+            <div className="text-right">
+              <p className="text-sm font-semibold text-gray-900">KES {txn.amount}</p>
+              <p className="text-xs text-green-600">+KES {txn.profit}</p>
+              <p className="text-xs text-gray-400">{txn.time}</p>
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-2 gap-3">
-        {/* Stock Management */}
-        <Link
-          href="/dashboard/airtime"
-          className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:border-[#8B1D1D] transition-colors"
-        >
-          <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center mb-3">
-            <Zap className="w-5 h-5 text-purple-600" />
+      {/* Top Customers */}
+      <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+        <h3 className="font-semibold text-gray-900 mb-3">Top Customers</h3>
+        {paymentData.topCustomers.map((customer, i) => (
+          <div key={i} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-[#8B1D1D]/10 rounded-full flex items-center justify-center text-[#8B1D1D] font-bold text-sm">
+                {customer.name.charAt(0)}
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900">{customer.name}</p>
+                <p className="text-xs text-gray-500">{customer.purchases} purchases</p>
+              </div>
+            </div>
+            <p className="text-sm font-semibold text-gray-900">KES {customer.spent.toLocaleString()}</p>
           </div>
-          <h4 className="font-semibold text-gray-900 text-sm">Stock Management</h4>
-          <p className="text-xs text-gray-500 mt-1">View & manage airtime stock</p>
-        </Link>
-
-        {/* Profit & Loss */}
-        <Link
-          href="/dashboard/stats"
-          className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:border-[#8B1D1D] transition-colors"
-        >
-          <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mb-3">
-            <TrendingUp className="w-5 h-5 text-blue-600" />
-          </div>
-          <h4 className="font-semibold text-gray-900 text-sm">Profit & Loss</h4>
-          <p className="text-xs text-gray-500 mt-1">View detailed reports</p>
-        </Link>
+        ))}
       </div>
 
-      {/* This Week Summary */}
-      <div className="bg-gradient-to-br from-gray-50 to-white rounded-xl p-4 border border-gray-200">
-        <h3 className="font-semibold text-gray-900 mb-3">This Week</h3>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-500">Total Revenue</span>
-            <span className="text-sm font-semibold text-gray-900">
-              KES {metrics.thisWeek.revenue.toLocaleString()}
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-500">Total Profit</span>
-            <span className="text-sm font-semibold text-green-600">
-              KES {metrics.thisWeek.profit.toLocaleString()}
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-500">Transactions</span>
-            <span className="text-sm font-semibold text-gray-900">
-              {metrics.thisWeek.transactionCount}
-            </span>
-          </div>
-        </div>
-      </div>
+      {/* Quick Action */}
+      <Link href="/dashboard/payments" className="block w-full bg-[#8B1D1D] text-white text-center py-3.5 rounded-lg font-bold shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2">
+        <CreditCard className="w-5 h-5" />
+        Initiate STK Push
+      </Link>
 
-      {/* Pull to Refresh Indicator */}
-      <div className="text-center py-4">
-        <button
-          onClick={handleRefresh}
-          className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-gray-600"
-        >
-          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          {isRefreshing ? 'Refreshing...' : 'Pull to refresh'}
-        </button>
-      </div>
+      {/* Refresh */}
+      <button onClick={handleRefresh} className="w-full text-sm text-gray-400 py-2 flex items-center justify-center gap-2">
+        <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+        {isRefreshing ? 'Refreshing...' : 'Pull to refresh'}
+      </button>
     </div>
   );
 }

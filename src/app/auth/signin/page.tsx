@@ -18,12 +18,18 @@ export default function SignInPage() {
     setIsLoading(true);
     setError('');
     
-    // Simulate authentication
     setTimeout(() => {
-      // For demo: username "demo" and password "password123" is valid
+      // Payment collection merchant
       if (username === 'demo' && password === 'password123') {
+        localStorage.setItem('serviceType', 'payment_collection');
         router.push('/auth/verify');
-      } else {
+      }
+      // Airtime reseller merchant
+      else if (username === 'airtime' && password === 'password123') {
+        localStorage.setItem('serviceType', 'airtime');
+        router.push('/auth/verify');
+      }
+      else {
         setError('Invalid username or password');
         setIsLoading(false);
       }
@@ -66,14 +72,12 @@ export default function SignInPage() {
           <p className="text-gray-500 mb-8">Continue to sign in!</p>
 
           <form onSubmit={handleSubmit}>
-            {/* Error Message */}
             {error && (
               <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
                 <p className="text-red-600 text-sm text-center">{error}</p>
               </div>
             )}
 
-            {/* Username Field */}
             <div className="mb-6">
               <label className="block text-sm font-semibold text-gray-700 mb-2">USERNAME:</label>
               <input
@@ -82,13 +86,12 @@ export default function SignInPage() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoComplete="off"
-                placeholder="marishprajapati179"
+                placeholder="Enter username (demo or airtime)"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#8B1D1D]"
                 required
               />
             </div>
 
-            {/* Password Field */}
             <div className="mb-4">
               <label className="block text-sm font-semibold text-gray-700 mb-2">PASSWORD:</label>
               <input
@@ -103,7 +106,6 @@ export default function SignInPage() {
               />
             </div>
 
-            {/* Forgot Password Link */}
             <div className="text-right mb-4">
               <Link 
                 href="/auth/forgot-password" 
@@ -113,7 +115,6 @@ export default function SignInPage() {
               </Link>
             </div>
 
-            {/* Remember Me Checkbox */}
             <div className="mb-6">
               <label className="flex items-center cursor-pointer">
                 <input
@@ -128,7 +129,6 @@ export default function SignInPage() {
               </label>
             </div>
 
-            {/* Sign In Button */}
             <button 
               type="submit"
               disabled={isLoading}
@@ -138,7 +138,6 @@ export default function SignInPage() {
             </button>
           </form>
 
-          {/* Sign Up Link */}
           <p className="text-center text-gray-600">
             Don't have an Account?{' '}
             <Link href="/auth/signup" className="text-[#8B1D1D] font-semibold hover:underline">
@@ -147,13 +146,31 @@ export default function SignInPage() {
           </p>
 
           {/* Demo Credentials */}
-          <div className="mt-6 p-3 bg-gray-50 rounded-lg">
-            <p className="text-xs text-gray-500 text-center">
-              Demo: username: <span className="font-semibold">demo</span> / password: <span className="font-semibold">password123</span>
+          <div className="mt-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
+            <p className="text-xs font-semibold text-gray-700 text-center mb-3">
+              🔑 Demo Accounts
             </p>
-            <p className="text-xs text-gray-500 text-center mt-1">
-              PIN: <span className="font-semibold">123456</span>
-            </p>
+            <div className="space-y-2">
+              <div className="bg-white rounded-lg p-3 border border-green-200">
+                <p className="text-xs text-gray-500 mb-1">
+                  💳 <span className="font-semibold text-green-700">Payment Collection</span>
+                </p>
+                <p className="text-xs text-gray-600">
+                  Username: <span className="font-semibold">demo</span>
+                </p>
+              </div>
+              <div className="bg-white rounded-lg p-3 border border-blue-200">
+                <p className="text-xs text-gray-500 mb-1">
+                  📡 <span className="font-semibold text-blue-700">Airtime Reseller</span>
+                </p>
+                <p className="text-xs text-gray-600">
+                  Username: <span className="font-semibold">airtime</span>
+                </p>
+              </div>
+              <p className="text-xs text-gray-500 text-center pt-1">
+                Password: <span className="font-semibold">password123</span> • PIN: <span className="font-semibold">123456</span>
+              </p>
+            </div>
           </div>
         </div>
       </div>

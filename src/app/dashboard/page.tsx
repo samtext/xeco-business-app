@@ -7,7 +7,16 @@ export default function DashboardPage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace('/dashboard/overview');
+    const serviceType = localStorage.getItem('serviceType');
+    
+    if (serviceType === 'airtime') {
+      router.replace('/dashboard/airtime');
+    } else if (serviceType === 'payment') {
+      router.replace('/dashboard/payments');
+    } else {
+      // Fallback - default to payments
+      router.replace('/dashboard/payments');
+    }
   }, [router]);
 
   return (
