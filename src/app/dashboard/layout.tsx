@@ -4,122 +4,112 @@ import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  Home,
-  Package,
-  Receipt,
-  Settings,
-  User,
-  Menu,
-  X,
-  Store,
-  LogOut,
-  Wallet,
-  Building2,
-  BarChart3,
-  Eye,
-  EyeOff,
+  Home, Package, Receipt, Settings, User, Menu, X, Store,
+  LogOut, Wallet, Building2, BarChart3, Eye, EyeOff, TrendingUp,
 } from 'lucide-react';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://xecoflow.onrender.com';
+
 // Types
-type ServiceType = 'payment_collection' | 'airtime';
+type ServiceType = 'airtime' | 'payment_collection';
 
 interface Business {
-  id: string;
   businessName: string;
   serviceType: ServiceType;
   tillNumber: string;
   aggregatorFloat?: number;
   tillBalance: number;
-  accountBalance: number;
 }
 
 interface Merchant {
   fullName: string;
+  email: string;
   business: Business;
 }
 
-// Mock data for both service types
-const merchantsData: Record<string, Merchant> = {
-  airtime: {
-    fullName: 'Sam Mwangi',
-    business: {
-      id: 'biz_2',
-      businessName: 'Sam Airtime Shop',
-      serviceType: 'airtime',
-      tillNumber: '123456',
-      aggregatorFloat: 89200,
-      tillBalance: 45200,
-      accountBalance: 45000,
-    },
-  },
-  payment_collection: {
-    fullName: 'Isaac Kimani',
-    business: {
-      id: 'biz_1',
-      businessName: 'Kimani Bookstore',
-      serviceType: 'payment_collection',
-      tillNumber: '567890',
-      tillBalance: 245680,
-      accountBalance: 189500,
-    },
-  },
-};
-
-// Default to payment if no service type found
-function getMerchantFromStorage(): Merchant {
-  if (typeof window === 'undefined') return merchantsData.payment_collection;
-  const storedType = localStorage.getItem('serviceType') as ServiceType;
-  return merchantsData[storedType] || merchantsData.payment_collection;
-}
-
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [showSidebar, setShowSidebar] = useState(false);
-  const [merchant, setMerchant] = useState<Merchant>(merchantsData.payment_collection);
-  const [serviceType, setServiceType] = useState<ServiceType>('payment_collection');
   const [showBalance, setShowBalance] = useState(true);
+  
+  // 🆕 Real data from API
+  const [merchant, setMerchant] = useState<Merchant>({
+    fullName: 'Loading...',
+    email: '',
+    business: { businessName: 'Loading...', serviceType: 'airtime', tillNumber: '...', tillBalance: 0 },
+  });
+  const [floatData, setFloatData] = useState({ aggregatorFloat: 0, tillBalance: 0 });
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Detect service type on mount
+  const serviceType = localStorage.getItem('serviceType') as ServiceType || 'airtime';
+  const isAirtime = serviceType === 'airtime';
+
+  // 🆕 Fetch real data on mount
   useEffect(() => {
-    const data = getMerchantFromStorage();
-    setMerchant(data);
-    setServiceType(data.business.serviceType);
+    fetchMerchantData();
+    fetchFloatData();
   }, []);
+
+  const fetchMerchantData = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const res = await fetch(`${API_URL}/api/v1/merchant/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (json.success) {
+        const d = json.data;
+        setMerchant({
+          fullName: d.fullName,
+          email: d.email,
+          business: {
+            businessName: d.business.businessName,
+            serviceType: d.business.serviceType === 'AIRTIME_AUTOMATION' ? 'airtime' : 'payment_collection',
+            tillNumber: d.business.tillNumber,
+            tillBalance: 0,
+          },
+        });
+        localStorage.setItem('serviceType', d.business.serviceType === 'AIRTIME_AUTOMATION' ? 'airtime' : 'payment_collection');
+      }
+    } catch (e) {
+      console.log('Merchant fetch failed, using defaults');
+    }
+  };
+
+  const fetchFloatData = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const res = await fetch(`${API_URL}/api/v1/merchant/float`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (json.success) {
+        setFloatData(json.data);
+      }
+    } catch (e) {
+      console.log('Float fetch failed, using defaults');
+    }
+    setIsLoading(false);
+  };
 
   const { business } = merchant;
   const { fullName } = merchant;
-  const isAirtime = serviceType === 'airtime';
-  const isPayment = serviceType === 'payment_collection';
 
-  // Store hides header, Profile hides everything
+  const headerBg = 'bg-[#8B1D1D]';
+  const avatarBg = 'bg-[#8B1D1D]';
+  const badgeBg = isAirtime ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700';
+  const badgeLabel = isAirtime ? '📡 Airtime Reseller' : '💳 Payment Collection';
+  const homePath = isAirtime ? '/dashboard/airtime' : '/dashboard/payments';
   const hideHeader = pathname === '/dashboard/store';
   const isFullScreen = pathname === '/dashboard/profile';
 
-  // Same red color for both - XecoFlow brand
-  const headerBg = 'bg-[#8B1D1D]';
-  const avatarBg = 'bg-[#8B1D1D]';
-
-  // Different badge colors to distinguish service type
-  const badgeBg = isAirtime ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700';
-  const badgeLabel = isAirtime ? '📡 Airtime Reseller' : '💳 Payment Collection';
-
-  // Home dashboard path based on service type
-  const homePath = isAirtime ? '/dashboard/airtime' : '/dashboard/payments';
-
-  // Format balance with hide/show
   const formatBalance = (amount: number) => {
-    if (showBalance) {
-      return `KES ${amount.toLocaleString()}`;
-    }
+    if (showBalance) return `KES ${amount.toLocaleString()}`;
     return 'KES ****';
   };
 
-  // UNIFIED Bottom navigation
+  // Bottom navigation
   const bottomNavItems = [
     { key: 'home', icon: Home, label: 'Home', href: homePath, active: pathname === homePath },
     { key: 'store', icon: Package, label: 'Store', href: '/dashboard/store', active: pathname === '/dashboard/store' },
@@ -128,7 +118,7 @@ export default function DashboardLayout({
     { key: 'profile', icon: User, label: 'Profile', href: '/dashboard/profile', active: pathname === '/dashboard/profile' },
   ];
 
-  // UNIFIED Sidebar
+  // Sidebar
   const sidebarItems: { key: string; icon: any; label: string; href: string }[] = [
     { key: 'home', icon: Home, label: 'Home', href: homePath },
     { key: 'store', icon: Package, label: 'Store', href: '/dashboard/store' },
@@ -142,45 +132,41 @@ export default function DashboardLayout({
   ];
 
   const handleLogout = () => {
-    localStorage.removeItem('serviceType');
+    localStorage.clear();
     router.push('/auth/signin');
   };
 
-  // Profile - full screen, no nav
+  // Full screen pages
   if (isFullScreen) {
-    return (
-      <div className="min-h-screen bg-white">
-        {children}
-      </div>
-    );
+    return <div className="min-h-screen bg-white">{children}</div>;
   }
 
-  // Store - no header, but keep bottom nav
+  // Store page (no header)
   if (hideHeader) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
-        <main className="flex-1 overflow-y-auto pb-20">
-          {children}
-        </main>
+        <main className="flex-1 overflow-y-auto pb-20">{children}</main>
         <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50">
-          <div className="flex items-center justify-around px-2 py-2 safe-area-bottom">
+          <div className="flex items-center justify-around px-2 py-2">
             {bottomNavItems.map((item) => {
               const Icon = item.icon;
               return (
-                <Link
-                  key={item.key}
-                  href={item.href}
-                  className={`flex flex-col items-center gap-1 px-3 py-1 rounded-lg transition-colors ${
-                    item.active ? 'text-[#8B1D1D]' : 'text-gray-400 hover:text-gray-600'
-                  }`}
-                >
-                  <Icon className="w-5 h-5" />
-                  <span className="text-[10px] font-medium">{item.label}</span>
+                <Link key={item.key} href={item.href} className={`flex flex-col items-center gap-1 px-3 py-1 rounded-lg ${item.active ? 'text-[#8B1D1D]' : 'text-gray-400'}`}>
+                  <Icon className="w-5 h-5" /><span className="text-[10px] font-medium">{item.label}</span>
                 </Link>
               );
             })}
           </div>
         </nav>
+      </div>
+    );
+  }
+
+  // 🆕 Loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[#8B1D1D] border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -192,70 +178,53 @@ export default function DashboardLayout({
         <div className="px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <button
-                onClick={() => setShowSidebar(!showSidebar)}
-                className="p-1 hover:bg-white/10 rounded-lg transition-colors"
-              >
+              <button onClick={() => setShowSidebar(!showSidebar)} className="p-1 hover:bg-white/10 rounded-lg">
                 <Menu className="w-6 h-6" />
               </button>
               <h1 className="text-lg font-bold tracking-tight">XECOFLOW</h1>
             </div>
-            
-            {/* 🟢 Business Name + Till Number in rounded pill */}
             <div className="flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-lg">
               <Store className="w-3.5 h-3.5" />
               <div className="flex flex-col">
-                <span className="text-sm font-medium truncate max-w-[120px] leading-tight">
-                  {business.businessName}
-                </span>
-                <span className="text-[10px] text-white/50 leading-tight">
-                  Till: {business.tillNumber}
-                </span>
+                <span className="text-sm font-medium truncate max-w-[120px] leading-tight">{business.businessName}</span>
+                <span className="text-[10px] text-white/50 leading-tight">Till: {business.tillNumber}</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Balance Display with Eye Toggle */}
-        {isAirtime && business.aggregatorFloat !== undefined && (
+        {/* 🆕 Real Balance Display */}
+        {isAirtime && (
           <div className="px-4 pb-3 space-y-2">
-            {/* Aggregator Float */}
             <div className="bg-white/10 rounded-xl p-3 relative">
               <div className="flex items-center gap-2 mb-1">
                 <Wallet className="w-4 h-4 text-white/60" />
                 <p className="text-xs text-white/60">Airtime Float</p>
               </div>
-              <p className="text-xl font-bold">{formatBalance(business.aggregatorFloat)}</p>
-              <button
-                onClick={() => setShowBalance(!showBalance)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 hover:bg-white/10 rounded-lg transition-colors"
-              >
+              <p className="text-xl font-bold">{formatBalance(floatData.aggregatorFloat)}</p>
+              <button onClick={() => setShowBalance(!showBalance)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5">
                 {showBalance ? <Eye className="w-5 h-5 text-white/70" /> : <EyeOff className="w-5 h-5 text-white/70" />}
               </button>
             </div>
-            {/* Till Balance */}
             <div className="bg-white/10 rounded-xl p-3 relative">
               <div className="flex items-center gap-2 mb-1">
                 <Building2 className="w-4 h-4 text-white/60" />
                 <p className="text-xs text-white/60">Till Balance</p>
               </div>
-              <p className="text-lg font-semibold">{formatBalance(business.tillBalance)}</p>
+              <p className="text-lg font-semibold">{formatBalance(floatData.tillBalance)}</p>
             </div>
           </div>
         )}
 
-        {isPayment && (
+        {!isAirtime && (
           <div className="px-4 pb-3">
             <div className="bg-white/10 rounded-xl p-3 relative">
               <div className="flex items-center gap-2 mb-1">
                 <Wallet className="w-4 h-4 text-white/60" />
                 <p className="text-xs text-white/60">Float Balance</p>
               </div>
-              <p className="text-xl font-bold">{formatBalance(business.tillBalance)}</p>
-              <button
-                onClick={() => setShowBalance(!showBalance)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 hover:bg-white/10 rounded-lg transition-colors"
-              >
+              <p className="text-xl font-bold">{formatBalance(floatData.tillBalance)}</p>
+              <button onClick={() => setShowBalance(!showBalance)} className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5">
                 {showBalance ? <Eye className="w-5 h-5 text-white/70" /> : <EyeOff className="w-5 h-5 text-white/70" />}
               </button>
             </div>
@@ -263,26 +232,16 @@ export default function DashboardLayout({
         )}
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto pb-20">
-        {children}
-      </main>
+      <main className="flex-1 overflow-y-auto pb-20">{children}</main>
 
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50">
-        <div className="flex items-center justify-around px-2 py-2 safe-area-bottom">
+        <div className="flex items-center justify-around px-2 py-2">
           {bottomNavItems.map((item) => {
             const Icon = item.icon;
             return (
-              <Link
-                key={item.key}
-                href={item.href}
-                className={`flex flex-col items-center gap-1 px-3 py-1 rounded-lg transition-colors ${
-                  item.active ? 'text-[#8B1D1D]' : 'text-gray-400 hover:text-gray-600'
-                }`}
-              >
-                <Icon className="w-5 h-5" />
-                <span className="text-[10px] font-medium">{item.label}</span>
+              <Link key={item.key} href={item.href} className={`flex flex-col items-center gap-1 px-3 py-1 rounded-lg ${item.active ? 'text-[#8B1D1D]' : 'text-gray-400'}`}>
+                <Icon className="w-5 h-5" /><span className="text-[10px] font-medium">{item.label}</span>
               </Link>
             );
           })}
@@ -296,83 +255,43 @@ export default function DashboardLayout({
           <div className="relative w-72 bg-white h-full overflow-y-auto p-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-bold text-gray-900">Menu</h2>
-              <button onClick={() => setShowSidebar(false)} className="p-1 hover:bg-gray-100 rounded-lg">
-                <X className="w-5 h-5" />
-              </button>
+              <button onClick={() => setShowSidebar(false)} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
             </div>
-
-            {/* Merchant Info */}
             <div className="bg-gray-50 rounded-xl p-4 mb-6">
               <div className="flex items-center gap-3 mb-3">
-                <div className={`w-10 h-10 ${avatarBg} rounded-full flex items-center justify-center text-white font-bold`}>
-                  {fullName.charAt(0)}
-                </div>
-                <div>
-                  <p className="font-semibold text-gray-900">{fullName}</p>
-                  <p className="text-xs text-gray-500">{business.businessName}</p>
-                </div>
+                <div className={`w-10 h-10 ${avatarBg} rounded-full flex items-center justify-center text-white font-bold`}>{fullName.charAt(0)}</div>
+                <div><p className="font-semibold text-gray-900">{fullName}</p><p className="text-xs text-gray-500">{business.businessName}</p></div>
               </div>
-              {isAirtime && business.aggregatorFloat !== undefined && (
+              {isAirtime && (
                 <div className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Aggregator:</span>
-                    <span className="font-semibold">{formatBalance(business.aggregatorFloat)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Till:</span>
-                    <span className="font-semibold">{formatBalance(business.tillBalance)}</span>
-                  </div>
+                  <div className="flex justify-between text-sm"><span className="text-gray-500">Aggregator:</span><span className="font-semibold">{formatBalance(floatData.aggregatorFloat)}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-gray-500">Till:</span><span className="font-semibold">{formatBalance(floatData.tillBalance)}</span></div>
                 </div>
               )}
-              {isPayment && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Float:</span>
-                  <span className="font-semibold">{formatBalance(business.tillBalance)}</span>
-                </div>
+              {!isAirtime && (
+                <div className="flex justify-between text-sm"><span className="text-gray-500">Float:</span><span className="font-semibold">{formatBalance(floatData.tillBalance)}</span></div>
               )}
-              <span className={`inline-block mt-2 text-xs px-2 py-0.5 rounded-full ${badgeBg}`}>
-                {badgeLabel}
-              </span>
+              <span className={`inline-block mt-2 text-xs px-2 py-0.5 rounded-full ${badgeBg}`}>{badgeLabel}</span>
             </div>
-
-            {/* Navigation Links */}
             <nav className="space-y-1">
               {sidebarItems.map((item) => {
                 const Icon = item.icon;
-                const isActive = pathname === item.href;
                 return (
-                  <Link
-                    key={item.key}
-                    href={item.href}
-                    onClick={() => setShowSidebar(false)}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-                      isActive ? 'bg-[#8B1D1D]/10 text-[#8B1D1D] font-semibold' : 'text-gray-600 hover:bg-gray-100'
-                    }`}
-                  >
-                    <Icon className="w-5 h-5" />
-                    <span className="text-sm">{item.label}</span>
+                  <Link key={item.key} href={item.href} onClick={() => setShowSidebar(false)} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg ${pathname === item.href ? 'bg-[#8B1D1D]/10 text-[#8B1D1D] font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}>
+                    <Icon className="w-5 h-5" /><span className="text-sm">{item.label}</span>
                   </Link>
                 );
               })}
             </nav>
-
-            {/* Add Another Business */}
             <div className="mt-4 border-t border-gray-200 pt-4">
               <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200">
                 <p className="text-sm font-semibold text-yellow-900 mb-1">Multiple Businesses?</p>
                 <p className="text-xs text-yellow-700 mb-3">Each business requires a separate account.</p>
-                <button disabled className="w-full py-2 bg-yellow-100 text-yellow-700 rounded-lg text-sm font-medium cursor-not-allowed opacity-60">
-                  + Add Another Business (Coming Soon)
-                </button>
+                <button disabled className="w-full py-2 bg-yellow-100 text-yellow-700 rounded-lg text-sm font-medium cursor-not-allowed opacity-60">+ Add Another Business (Coming Soon)</button>
               </div>
             </div>
-
-            {/* Sign Out */}
             <div className="mt-4 pt-4 border-t border-gray-200">
-              <button onClick={handleLogout} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-red-600 hover:bg-red-50 w-full transition-colors">
-                <LogOut className="w-5 h-5" />
-                <span className="text-sm font-medium">Sign Out</span>
-              </button>
+              <button onClick={handleLogout} className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-red-600 hover:bg-red-50 w-full"><LogOut className="w-5 h-5" /><span className="text-sm font-medium">Sign Out</span></button>
             </div>
           </div>
         </div>

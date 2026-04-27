@@ -2,9 +2,7 @@
 
 import { useState } from 'react';
 import {
-  Wifi,
   Shield,
-  Bot,
   Search,
   FileText,
   CreditCard,
@@ -21,17 +19,24 @@ import {
   X,
   HelpCircle,
   Bell,
+  Wallet,
 } from 'lucide-react';
 
-// Section 1: Active Services
-const activeServices = [
-  { id: 'airtime', name: 'Airtime', desc: 'Auto-send', icon: Wifi, color: 'bg-emerald-50', iconColor: 'text-emerald-600' },
-  { id: 'stk', name: 'STK Push', desc: 'Collect', icon: Smartphone, color: 'bg-amber-50', iconColor: 'text-amber-600' },
-  { id: 'nexora', name: 'Nexora AI', desc: 'Insights', icon: Bot, color: 'bg-violet-50', iconColor: 'text-violet-600' },
+// Section 1: Financial Services (Xeco Pay with logo)
+const financialServices = [
+  { 
+    id: 'xecopay', 
+    name: 'Xeco Pay', 
+    desc: 'Accept payments', 
+    icon: Wallet,
+    imageUrl: 'https://fontslogo.com/wp-content/uploads/2013/04/xecom-Logo-Font.jpg',
+    color: 'bg-white', 
+    iconColor: 'text-emerald-600' 
+  },
 ];
 
-// Section 2: Financial Services
-const financialServices = [
+// Section 2: Financial Intelligence
+const financialIntelligence = [
   { id: 'crb', name: 'CRB Check', icon: Shield, color: 'bg-sky-50', iconColor: 'text-sky-600' },
   { id: 'chama', name: 'ChamaFlow', icon: Users, color: 'bg-rose-50', iconColor: 'text-rose-600' },
   { id: 'pesalink', name: 'Pesalink', icon: Send, color: 'bg-cyan-50', iconColor: 'text-cyan-600' },
@@ -90,20 +95,12 @@ export default function StorePage() {
   return (
     <div className="bg-white min-h-screen">
       
-      {/* ==================== CENTERED CLEAN HEADER ==================== */}
       <header className="px-6 pt-12 pb-8 bg-white border-b border-slate-50">
         <div className="flex justify-between items-center relative">
-          {/* Left Icon */}
           <button className="p-2 text-slate-300 hover:text-slate-500 transition-colors">
             <HelpCircle className="w-6 h-6 stroke-[1.5]" />
           </button>
-
-          {/* Centered Title */}
-          <h1 className="text-[22px] font-bold text-gray-900 tracking-tight absolute left-1/2 -translate-x-1/2">
-            Services
-          </h1>
-
-          {/* Right Search Icon */}
+          <h1 className="text-[22px] font-bold text-gray-900 tracking-tight absolute left-1/2 -translate-x-1/2">Services</h1>
           <button className="p-2 text-gray-400 hover:text-[#8B1D1D] transition-colors">
             <Search className="w-6 h-6 stroke-[2]" />
           </button>
@@ -112,18 +109,18 @@ export default function StorePage() {
 
       <main className="pb-24 pt-6">
         
-        {/* ==================== SECTION 1: Your Services ==================== */}
+        {/* Financial Services - Xeco Pay with Logo */}
         <div className="px-6">
-          <SectionTitle title="Active Deployment" action="Manage" />
+          <SectionTitle title="Financial Services" action="Manage" />
           <div className="flex gap-5 overflow-x-auto pb-4 no-scrollbar">
-            {activeServices.map((service) => (
-              <button
-                key={service.id}
-                onClick={() => setSelectedService(service)}
-                className="flex flex-col items-center gap-2 min-w-[80px] group"
-              >
-                <div className={`w-16 h-16 ${service.color} rounded-[24px] flex items-center justify-center group-active:scale-95 transition-transform shadow-sm`}>
-                  <service.icon className={`w-7 h-7 ${service.iconColor} stroke-[1.5]`} />
+            {financialServices.map((service) => (
+              <button key={service.id} onClick={() => setSelectedService(service)} className="flex flex-col items-center gap-2 min-w-[80px] group">
+                <div className={`w-16 h-16 ${service.id === 'xecopay' ? 'bg-white border-2 border-emerald-200' : service.color} rounded-[24px] flex items-center justify-center group-active:scale-95 transition-transform shadow-sm overflow-hidden`}>
+                  {service.id === 'xecopay' && service.imageUrl ? (
+                    <img src={service.imageUrl} alt={service.name} className="w-10 h-10 object-contain rounded-lg" />
+                  ) : (
+                    <service.icon className={`w-7 h-7 ${service.iconColor} stroke-[1.5]`} />
+                  )}
                 </div>
                 <div className="flex flex-col items-center">
                   <span className="text-[12px] font-bold text-slate-800">{service.name}</span>
@@ -134,11 +131,11 @@ export default function StorePage() {
           </div>
         </div>
 
-        {/* ==================== SECTION 2: Financial Intelligence ==================== */}
+        {/* Financial Intelligence */}
         <div className="px-6 mt-10">
           <SectionTitle title="Financial Intelligence" action="See All" />
           <div className="grid grid-cols-4 gap-y-8">
-            {financialServices.map((service) => (
+            {financialIntelligence.map((service) => (
               <button key={service.id} onClick={() => setSelectedService(service)} className="flex flex-col items-center gap-2 group">
                 <ServiceIcon service={service} />
                 <span className="text-[11px] font-bold text-slate-600 text-center leading-tight">{service.name}</span>
@@ -147,7 +144,7 @@ export default function StorePage() {
           </div>
         </div>
 
-        {/* ==================== SECTION 3: Business Automation ==================== */}
+        {/* Business Automation */}
         <div className="px-6 mt-12">
           <SectionTitle title="Business Automation" action="See All" />
           <div className="grid grid-cols-4 gap-y-8">
@@ -160,7 +157,7 @@ export default function StorePage() {
           </div>
         </div>
 
-        {/* ==================== SECTION 4: Logistics & Operations ==================== */}
+        {/* Logistics & Operations */}
         <div className="px-6 mt-12">
           <SectionTitle title="Logistics & Operations" action="See All" />
           <div className="grid grid-cols-4 gap-y-8">
@@ -173,7 +170,7 @@ export default function StorePage() {
           </div>
         </div>
 
-        {/* ==================== SECTION 5: Compliance & Growth ==================== */}
+        {/* Compliance & Growth */}
         <div className="px-6 mt-12">
           <SectionTitle title="Compliance & Growth" />
           <div className="grid grid-cols-4 gap-y-8">
@@ -186,37 +183,34 @@ export default function StorePage() {
           </div>
         </div>
 
-        {/* ==================== SUBTLE BRAND ELEMENT ==================== */}
+        {/* Brand Element */}
         <div className="px-6 mt-14 flex flex-col items-center">
           <div className="w-8 h-0.5 bg-slate-100 rounded-full mb-3" />
           <p className="text-[11px] text-slate-300 font-medium tracking-wide">
             Powered by <span className="text-slate-400 font-bold">XecoFlow</span>
           </p>
-          <p className="text-[9px] text-slate-300/70 mt-0.5">
-            Business Intelligence on M-Pesa
-          </p>
+          <p className="text-[9px] text-slate-300/70 mt-0.5">Business Intelligence on M-Pesa</p>
         </div>
 
       </main>
 
-      {/* ==================== SERVICE DETAIL DRAWER ==================== */}
+      {/* Service Detail Drawer */}
       {selectedService && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center">
+        <div className="fixed inset-0 z-[60] flex items-end justify-center">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setSelectedService(null)} />
           <div className="relative bg-white rounded-t-[32px] w-full max-w-md p-8 animate-in slide-in-from-bottom duration-300 shadow-2xl">
             <div className="w-12 h-1.5 bg-slate-100 rounded-full mx-auto mb-8" />
-            
             <div className="flex flex-col items-center text-center">
-              <div className={`w-20 h-20 ${selectedService.color} rounded-[28px] flex items-center justify-center mb-4 shadow-sm`}>
-                <selectedService.icon className={`w-10 h-10 ${selectedService.iconColor} stroke-[1.5]`} />
+              <div className={`w-20 h-20 ${selectedService.id === 'xecopay' ? 'bg-white border-2 border-emerald-200' : selectedService.color} rounded-[28px] flex items-center justify-center mb-4 shadow-sm overflow-hidden`}>
+                {selectedService.id === 'xecopay' && selectedService.imageUrl ? (
+                  <img src={selectedService.imageUrl} alt={selectedService.name} className="w-12 h-12 object-contain rounded-lg" />
+                ) : (
+                  <selectedService.icon className={`w-10 h-10 ${selectedService.iconColor} stroke-[1.5]`} />
+                )}
               </div>
               <h3 className="text-xl font-bold text-slate-900">{selectedService.name}</h3>
-              <p className="text-slate-500 text-sm mt-2 px-4">
-                Professional merchant tool powered by XecoFlow Intelligence.
-              </p>
+              <p className="text-slate-500 text-sm mt-2 px-4">Professional merchant tool powered by XecoFlow Intelligence.</p>
             </div>
-
-            {/* Connect to Till */}
             <div className="bg-slate-50 rounded-2xl p-4 mt-6">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Connect to Till</p>
               <select className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700">
@@ -224,21 +218,14 @@ export default function StorePage() {
                 <option>Till #567890</option>
               </select>
             </div>
-
-            {/* Pricing */}
             <div className="text-center mt-4">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pricing</p>
-              <p className="text-lg font-bold text-slate-900 mt-1">
-                {selectedService.price || 'Free'}
-              </p>
+              <p className="text-lg font-bold text-slate-900 mt-1">Free</p>
             </div>
-
             <button className="w-full bg-[#8B1D1D] text-white py-4 rounded-[20px] font-bold mt-5 shadow-lg shadow-[#8B1D1D]/20 active:scale-[0.98] transition-transform">
               Activate Service
             </button>
-            <button onClick={() => setSelectedService(null)} className="w-full py-4 text-slate-400 text-sm font-medium">
-              Cancel
-            </button>
+            <button onClick={() => setSelectedService(null)} className="w-full py-4 text-slate-400 text-sm font-medium">Cancel</button>
           </div>
         </div>
       )}

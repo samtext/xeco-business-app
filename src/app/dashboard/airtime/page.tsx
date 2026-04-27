@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   AlertTriangle,
   RotateCcw,
@@ -11,77 +11,210 @@ import {
   CheckCircle,
   Loader2,
 } from 'lucide-react';
+import { api } from '../../../lib/api';
 
-// Mock stock data
-const mockStockData = [
-  { denomination: 10, network: 'Safaricom', stock: 150, sold: 45, cost: 9.5, price: 10, profit: 0.5 },
-  { denomination: 20, network: 'Safaricom', stock: 100, sold: 32, cost: 19, price: 20, profit: 1 },
-  { denomination: 50, network: 'Safaricom', stock: 80, sold: 28, cost: 47.5, price: 50, profit: 2.5 },
-  { denomination: 100, network: 'Safaricom', stock: 25, sold: 67, cost: 95, price: 100, profit: 5 },
-  { denomination: 250, network: 'Safaricom', stock: 15, sold: 22, cost: 238, price: 250, profit: 12 },
-  { denomination: 500, network: 'Safaricom', stock: 8, sold: 12, cost: 475, price: 500, profit: 25 },
-  { denomination: 10, network: 'Airtel', stock: 120, sold: 35, cost: 9.3, price: 10, profit: 0.7 },
-  { denomination: 20, network: 'Airtel', stock: 90, sold: 25, cost: 18.5, price: 20, profit: 1.5 },
-  { denomination: 50, network: 'Airtel', stock: 60, sold: 20, cost: 46, price: 50, profit: 4 },
-  { denomination: 100, network: 'Airtel', stock: 15, sold: 45, cost: 93, price: 100, profit: 7 },
-  { denomination: 250, network: 'Airtel', stock: 10, sold: 15, cost: 235, price: 250, profit: 15 },
-  { denomination: 10, network: 'Telkom', stock: 80, sold: 20, cost: 9.2, price: 10, profit: 0.8 },
-  { denomination: 20, network: 'Telkom', stock: 50, sold: 15, cost: 18, price: 20, profit: 2 },
-  { denomination: 50, network: 'Telkom', stock: 30, sold: 10, cost: 45, price: 50, profit: 5 },
-  { denomination: 100, network: 'Telkom', stock: 15, sold: 25, cost: 92, price: 100, profit: 8 },
-];
-
-// Transaction History
-const transactionHistory = [
-  { id: 'txn_1', name: 'Samuel', phone: '0712071388', amount: 100, status: 'delivered', timestamp: '2 min ago' },
-  { id: 'txn_2', name: 'Janet', phone: '0723123456', amount: 50, status: 'delivered', timestamp: '15 min ago' },
-  { id: 'txn_3', name: 'Peter', phone: '0798123456', amount: 20, status: 'failed', timestamp: '30 min ago', failReason: 'Statum network timeout.' },
-  { id: 'txn_4', name: 'Mary', phone: '0741123456', amount: 100, status: 'delivered', timestamp: '1 hour ago' },
-  { id: 'txn_5', name: 'James', phone: '0712345678', amount: 250, status: 'processing', timestamp: '5 min ago' },
-  { id: 'txn_6', name: 'Alice', phone: '0700123456', amount: 50, status: 'delivered', timestamp: '2 hours ago' },
-];
-
-// Failed deliveries for alerts
-const mockDeliveryLogs = [
-  { id: 'del_1', name: 'Samuel', phone: '0712071388', status: 'failed', timestamp: '2 min ago', failReason: 'Insufficient Kyanda balance.', failCode: 'STOCK_EMPTY' },
-  { id: 'del_3', name: 'Peter', phone: '0798123456', status: 'failed', timestamp: '30 min ago', failReason: 'Statum network timeout.', failCode: 'NETWORK_TIMEOUT' },
-];
-
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
 const maskPhone = (phone: string) => {
-  if (phone.length >= 10) return phone.slice(0, 4) + 'xxxx' + phone.slice(-2);
-  return phone;
+  if (!phone) return 'xxxxxxxx';
+  const clean = phone.replace('254', '0');
+  if (clean.length >= 10) return clean.slice(0, 4) + 'xxxx' + clean.slice(-2);
+  return clean;
+};
+
+const formatTimeAgo = (dateString: string) => {
+  const now = new Date();
+  const date = new Date(dateString);
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins} min ago`;
+  const diffHrs = Math.floor(diffMins / 60);
+  if (diffHrs < 24) return `${diffHrs} hour${diffHrs > 1 ? 's' : ''} ago`;
+  return date.toLocaleDateString('en-KE', { month: 'short', day: 'numeric' });
 };
 
 const networkNames: Record<string, string> = {
+  'kyanda': 'Kyanda',
+  'statum': 'Statum',
+  'telkom': 'Telkom',
   'Safaricom': 'Kyanda',
   'Airtel': 'Statum',
-  'Telkom': 'Telkom',
 };
 
+// ============================================================================
+// TYPES
+// ============================================================================
+interface Transaction {
+  id: string;
+  name: string;
+  phone: string;
+  amount: number;
+  status: string;
+  timestamp: string;
+  failReason?: string;
+  failCode?: string;
+  profit?: number;
+}
+
+interface Alert {
+  id: string;
+  name: string;
+  phone: string;
+  amount?: number;
+  network?: string;
+  timestamp: string;
+  failReason?: string;
+  failCode?: string;
+  denomination?: number;
+  stock?: number;
+  type: 'low_stock' | 'failed_delivery';
+}
+
+interface SummaryData {
+  totalTransactions: number;
+  successfulTransactions: number;
+  missedSales: number;
+  successRate: number;
+  todaySales: number;
+  todayProfit: number;
+}
+
+// ============================================================================
+// COMPONENT
+// ============================================================================
 export default function AirtimePage() {
-  const [selectedFailedLog, setSelectedFailedLog] = useState<any>(null);
+  // State
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [summary, setSummary] = useState<SummaryData>({
+    totalTransactions: 0,
+    successfulTransactions: 0,
+    missedSales: 0,
+    successRate: 0,
+    todaySales: 0,
+    todayProfit: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [selectedFailedLog, setSelectedFailedLog] = useState<Alert | null>(null);
   const [showFailedModal, setShowFailedModal] = useState(false);
 
-  const todaySold = mockStockData.reduce((sum, item) => sum + item.sold * item.price, 0);
-  const lowStockItems = mockStockData.filter(item => item.stock <= 10);
-  const failedDeliveries = mockDeliveryLogs.filter(log => log.status === 'failed');
-  
-  const totalTransactions = 416;
-  const successfulTransactions = 312;
-  const missedSales = totalTransactions - successfulTransactions;
-  const successRate = 75;
-  const hasAlerts = lowStockItems.length > 0 || failedDeliveries.length > 0;
+  // =========================================================================
+  // FETCH DATA FROM REAL API
+  // =========================================================================
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
 
-  const handleFailedClick = (log: any) => {
+  const loadDashboardData = async () => {
+    setLoading(true);
+    try {
+      // Fetch all data in parallel
+      const [summaryData, transactionsData, alertsData] = await Promise.all([
+        api.getTodaySummary(),
+        api.getTransactions({ limit: 10 }),
+        api.getAlerts(),
+      ]);
+
+      // Set summary
+      if (summaryData) {
+        setSummary({
+          totalTransactions: summaryData.totalTransactions || 0,
+          successfulTransactions: summaryData.successfulTransactions || 0,
+          missedSales: summaryData.missedSales || summaryData.failedTransactions || 0,
+          successRate: summaryData.successRate || 0,
+          todaySales: summaryData.todaySales || 0,
+          todayProfit: summaryData.todayProfit || 0,
+        });
+      }
+
+      // Set transactions
+      if (transactionsData?.transactions) {
+        const formatted = transactionsData.transactions.map((txn: any) => ({
+          id: txn.id || txn.transactionId,
+          name: txn.name || 'Customer',
+          phone: txn.phone || txn.phone_number || '',
+          amount: txn.amount || 0,
+          status: txn.status === 'SUCCESS' ? 'delivered' : txn.status === 'FAILED' ? 'failed' : 'processing',
+          timestamp: formatTimeAgo(txn.timestamp || txn.created_at),
+          failReason: txn.failReason || txn.error_message,
+          failCode: txn.failCode || txn.status,
+          profit: txn.profit || txn.profit_earned,
+        }));
+        setTransactions(formatted);
+      }
+
+      // Set alerts
+      if (alertsData) {
+        const allAlerts: Alert[] = [
+          // Low stock alerts
+          ...(alertsData.lowStock || []).map((item: any) => ({
+            id: `stock_${item.network}_${item.denomination}`,
+            name: networkNames[item.network] || item.network,
+            phone: '',
+            denomination: item.denomination,
+            stock: item.stock,
+            timestamp: '',
+            type: 'low_stock' as const,
+          })),
+          // Failed delivery alerts
+          ...(alertsData.failedDeliveries || []).map((item: any) => ({
+            id: item.id,
+            name: item.name || 'Customer',
+            phone: item.phone || '',
+            amount: item.amount,
+            timestamp: formatTimeAgo(item.timestamp || item.created_at),
+            failReason: item.failReason || 'Delivery failed',
+            failCode: item.failCode || 'UNKNOWN',
+            type: 'failed_delivery' as const,
+          })),
+        ];
+        setAlerts(allAlerts);
+      }
+    } catch (error) {
+      console.error('Failed to load dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // =========================================================================
+  // HANDLERS
+  // =========================================================================
+  const handleFailedClick = (log: Alert) => {
     setSelectedFailedLog(log);
     setShowFailedModal(true);
   };
 
-  const handleTopUp = (network: string, denomination: number) => {
-    console.log('Top up:', network, denomination);
-    // In real app: open top-up flow
+  const handleRetry = async () => {
+    if (!selectedFailedLog) return;
+    try {
+      await api.retryTransaction(selectedFailedLog.id);
+      setShowFailedModal(false);
+      setSelectedFailedLog(null);
+      loadDashboardData(); // Refresh
+    } catch (error) {
+      console.error('Retry failed:', error);
+    }
   };
 
+  const handleRefund = async () => {
+    if (!selectedFailedLog) return;
+    try {
+      await api.refundTransaction(selectedFailedLog.id);
+      setShowFailedModal(false);
+      setSelectedFailedLog(null);
+      loadDashboardData(); // Refresh
+    } catch (error) {
+      console.error('Refund failed:', error);
+    }
+  };
+
+  // =========================================================================
+  // HELPERS
+  // =========================================================================
   const getStatusStyle = (status: string) => {
     switch (status) {
       case 'delivered': return { bg: 'bg-green-100', text: 'text-green-600', label: 'Delivered', icon: CheckCircle };
@@ -91,6 +224,24 @@ export default function AirtimePage() {
     }
   };
 
+  const lowStockItems = alerts.filter(a => a.type === 'low_stock');
+  const failedDeliveries = alerts.filter(a => a.type === 'failed_delivery');
+  const hasAlerts = alerts.length > 0;
+
+  // =========================================================================
+  // LOADING STATE
+  // =========================================================================
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 text-[#8B1D1D] animate-spin" />
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // RENDER
+  // =========================================================================
   return (
     <div className="p-4 space-y-4">
 
@@ -98,23 +249,31 @@ export default function AirtimePage() {
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
           <p className="text-xs text-gray-500">Today's Sales</p>
-          <p className="text-xl font-bold text-gray-900">KES {todaySold.toLocaleString()}</p>
-          <div className="flex items-center gap-1 mt-1"><span className="text-xs text-green-600">↑ 12%</span><span className="text-xs text-gray-400">vs yesterday</span></div>
+          <p className="text-xl font-bold text-gray-900">KES {summary.todaySales.toLocaleString()}</p>
+          <div className="flex items-center gap-1 mt-1">
+            <span className="text-xs text-gray-400">From airtime sales</span>
+          </div>
         </div>
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
           <p className="text-xs text-gray-500">Missed Sales</p>
-          <p className="text-xl font-bold text-red-500">{missedSales}</p>
-          <div className="flex items-center gap-1 mt-1"><span className="text-xs text-gray-400">Failed transactions</span></div>
+          <p className="text-xl font-bold text-red-500">{summary.missedSales}</p>
+          <div className="flex items-center gap-1 mt-1">
+            <span className="text-xs text-gray-400">Failed transactions</span>
+          </div>
         </div>
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
           <p className="text-xs text-gray-500">Today's Transactions</p>
-          <p className="text-xl font-bold text-gray-900">{totalTransactions}</p>
-          <div className="flex items-center gap-1 mt-1"><span className="text-xs text-gray-400">Total orders</span></div>
+          <p className="text-xl font-bold text-gray-900">{summary.totalTransactions}</p>
+          <div className="flex items-center gap-1 mt-1">
+            <span className="text-xs text-gray-400">Total orders</span>
+          </div>
         </div>
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
           <p className="text-xs text-gray-500">Successful Rate</p>
-          <p className="text-xl font-bold text-emerald-600">{successRate}%</p>
-          <div className="flex items-center gap-1 mt-1"><span className="text-xs text-gray-400">{successfulTransactions} of {totalTransactions}</span></div>
+          <p className="text-xl font-bold text-emerald-600">{summary.successRate}%</p>
+          <div className="flex items-center gap-1 mt-1">
+            <span className="text-xs text-gray-400">{summary.successfulTransactions} of {summary.totalTransactions}</span>
+          </div>
         </div>
       </div>
 
@@ -122,13 +281,15 @@ export default function AirtimePage() {
       {hasAlerts && (
         <div className="bg-white rounded-2xl border border-red-100 shadow-sm overflow-hidden">
           <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border-b border-red-100">
-            <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center"><AlertCircle className="w-4 h-4 text-red-600" /></div>
+            <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+              <AlertCircle className="w-4 h-4 text-red-600" />
+            </div>
             <h3 className="font-semibold text-gray-900">Alerts</h3>
-            <span className="ml-auto text-xs text-red-500 font-medium">{lowStockItems.length + failedDeliveries.length} issues</span>
+            <span className="ml-auto text-xs text-red-500 font-medium">{alerts.length} issues</span>
           </div>
           <div className="p-3 space-y-2 max-h-[280px] overflow-y-auto">
             
-            {/* Low Stock Alerts WITH Top Up button */}
+            {/* Low Stock Alerts */}
             {lowStockItems.map((item, index) => (
               <div key={`stock-${index}`} className="flex items-center justify-between p-3 bg-red-50/50 rounded-xl">
                 <div className="flex items-center gap-3">
@@ -137,7 +298,7 @@ export default function AirtimePage() {
                   </div>
                   <div>
                     <p className="font-semibold text-gray-900 text-sm">
-                      Low Stock: {networkNames[item.network] || item.network}
+                      Low Stock: {item.name}
                     </p>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-xs text-gray-500">{item.denomination} denom</span>
@@ -146,12 +307,6 @@ export default function AirtimePage() {
                     </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => handleTopUp(item.network, item.denomination)}
-                  className="px-4 py-2 bg-[#8B1D1D] text-white text-xs font-semibold rounded-xl hover:bg-[#701616] transition-colors shrink-0"
-                >
-                  Top Up
-                </button>
               </div>
             ))}
 
@@ -159,13 +314,19 @@ export default function AirtimePage() {
             {failedDeliveries.map((log, index) => (
               <div key={`failed-${index}`} className="flex items-center justify-between p-3 bg-red-50/50 rounded-xl">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center"><X className="w-5 h-5 text-red-600" /></div>
+                  <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                    <X className="w-5 h-5 text-red-600" />
+                  </div>
                   <div>
                     <p className="font-semibold text-gray-900 text-sm">{log.name}</p>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-xs text-gray-400 flex items-center gap-1"><Clock className="w-3 h-3" /> {log.timestamp}</span>
-                      <span className="text-gray-300">•</span>
-                      <span className="text-xs text-gray-400">📱 {maskPhone(log.phone)}</span>
+                      {log.phone && (
+                        <>
+                          <span className="text-gray-300">•</span>
+                          <span className="text-xs text-gray-400">📱 {maskPhone(log.phone)}</span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -182,33 +343,37 @@ export default function AirtimePage() {
           <h3 className="font-semibold text-gray-900">Transaction History</h3>
           <button className="text-xs text-[#8B1D1D] font-semibold">See All</button>
         </div>
-        <div className="space-y-2">
-          {transactionHistory.map((txn) => {
-            const statusStyle = getStatusStyle(txn.status);
-            const StatusIcon = statusStyle.icon;
-            return (
-              <div key={txn.id} className="flex items-center justify-between py-3 border-b border-gray-50 last:border-0">
-                <div className="flex items-center gap-3">
-                  <div className={`w-9 h-9 ${statusStyle.bg} rounded-full flex items-center justify-center`}>
-                    <StatusIcon className={`w-4 h-4 ${statusStyle.text} ${txn.status === 'processing' ? 'animate-spin' : ''}`} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900">{txn.name}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-xs text-gray-400">📱 {maskPhone(txn.phone)}</span>
-                      <span className="text-gray-300">•</span>
-                      <span className="text-xs text-gray-400">{txn.timestamp}</span>
+        {transactions.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-6">No transactions today</p>
+        ) : (
+          <div className="space-y-2">
+            {transactions.map((txn) => {
+              const statusStyle = getStatusStyle(txn.status);
+              const StatusIcon = statusStyle.icon;
+              return (
+                <div key={txn.id} className="flex items-center justify-between py-3 border-b border-gray-50 last:border-0">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-9 h-9 ${statusStyle.bg} rounded-full flex items-center justify-center`}>
+                      <StatusIcon className={`w-4 h-4 ${statusStyle.text} ${txn.status === 'processing' ? 'animate-spin' : ''}`} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{txn.name}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-xs text-gray-400">📱 {maskPhone(txn.phone)}</span>
+                        <span className="text-gray-300">•</span>
+                        <span className="text-xs text-gray-400">{txn.timestamp}</span>
+                      </div>
                     </div>
                   </div>
+                  <div className="text-right">
+                    <p className="text-sm font-bold text-gray-900">KES {txn.amount}</p>
+                    <span className={`text-[11px] font-semibold ${statusStyle.text}`}>{statusStyle.label}</span>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm font-bold text-gray-900">KES {txn.amount}</p>
-                  <span className={`text-[11px] font-semibold ${statusStyle.text}`}>{statusStyle.label}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Failed Transaction Detail Modal */}
@@ -217,21 +382,29 @@ export default function AirtimePage() {
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowFailedModal(false)} />
           <div className="relative bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md p-6">
             <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-6" />
-            <div className="flex justify-center mb-4"><div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center"><X className="w-8 h-8 text-red-600" /></div></div>
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center"><X className="w-8 h-8 text-red-600" /></div>
+            </div>
             <h3 className="text-xl font-bold text-gray-900 text-center">{selectedFailedLog.name}</h3>
             <div className="flex items-center justify-center gap-3 mt-2">
               <span className="text-xs text-gray-400 flex items-center gap-1"><Clock className="w-3 h-3" /> {selectedFailedLog.timestamp}</span>
-              <span className="text-gray-300">•</span>
-              <span className="text-xs text-gray-400">📱 {maskPhone(selectedFailedLog.phone)}</span>
+              {selectedFailedLog.phone && (
+                <>
+                  <span className="text-gray-300">•</span>
+                  <span className="text-xs text-gray-400">📱 {maskPhone(selectedFailedLog.phone)}</span>
+                </>
+              )}
             </div>
             <div className="bg-red-50 rounded-2xl p-4 mt-4">
               <p className="text-xs font-semibold text-red-400 uppercase tracking-wider mb-2">Failure Reason</p>
-              <p className="text-sm text-gray-800 leading-relaxed">{selectedFailedLog.failReason}</p>
-              <p className="text-xs text-red-400 mt-2">Code: {selectedFailedLog.failCode}</p>
+              <p className="text-sm text-gray-800 leading-relaxed">{selectedFailedLog.failReason || 'Unknown error'}</p>
+              {selectedFailedLog.failCode && (
+                <p className="text-xs text-red-400 mt-2">Code: {selectedFailedLog.failCode}</p>
+              )}
             </div>
             <div className="space-y-3 mt-4">
-              <button onClick={() => setShowFailedModal(false)} className="w-full bg-[#8B1D1D] text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-[#701616]"><RotateCcw className="w-5 h-5" />Retry</button>
-              <button onClick={() => setShowFailedModal(false)} className="w-full bg-white border-2 border-red-200 text-red-600 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-red-50"><Undo2 className="w-5 h-5" />Refund</button>
+              <button onClick={handleRetry} className="w-full bg-[#8B1D1D] text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-[#701616]"><RotateCcw className="w-5 h-5" />Retry</button>
+              <button onClick={handleRefund} className="w-full bg-white border-2 border-red-200 text-red-600 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-red-50"><Undo2 className="w-5 h-5" />Refund</button>
             </div>
           </div>
         </div>

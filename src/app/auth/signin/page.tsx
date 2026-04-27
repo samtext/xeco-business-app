@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://xecoflow.onrender.com';
+
 export default function SignInPage() {
   const router = useRouter();
   const [username, setUsername] = useState('');
@@ -17,23 +19,45 @@ export default function SignInPage() {
     e.preventDefault();
     setIsLoading(true);
     setError('');
-    
-    setTimeout(() => {
-      // Payment collection merchant
-      if (username === 'demo' && password === 'password123') {
-        localStorage.setItem('serviceType', 'payment_collection');
-        router.push('/auth/verify');
-      }
-      // Airtime reseller merchant
-      else if (username === 'airtime' && password === 'password123') {
-        localStorage.setItem('serviceType', 'airtime');
-        router.push('/auth/verify');
-      }
-      else {
-        setError('Invalid username or password');
+
+    try {
+      // Call backend login endpoint
+      const response = await fetch(`${API_URL}/api/v1/merchant/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || 'Invalid username or password');
         setIsLoading(false);
+        return;
       }
-    }, 1000);
+
+      // Store token and merchant info
+      const { token, merchant } = data.data;
+      
+      localStorage.setItem('authToken', token);
+      localStorage.setItem('merchantId', merchant.id);
+      localStorage.setItem('merchantName', merchant.fullName);
+      localStorage.setItem('businessName', merchant.businessName);
+      localStorage.setItem('merchantEmail', merchant.email);
+      localStorage.setItem('merchantPin', merchant.pinCode);
+      localStorage.setItem('verificationEmail', merchant.email);
+      
+      // Map service type
+      const serviceType = merchant.serviceType === 'AIRTIME_AUTOMATION' ? 'airtime' : 'payment_collection';
+      localStorage.setItem('serviceType', serviceType);
+
+      // Redirect to PIN verification
+      router.push(`/auth/verify?email=${encodeURIComponent(merchant.email)}`);
+
+    } catch (err) {
+      setError('Network error. Please check your connection.');
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -86,7 +110,7 @@ export default function SignInPage() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoComplete="off"
-                placeholder="Enter username (demo or airtime)"
+                placeholder="Enter your username"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#8B1D1D]"
                 required
               />
@@ -144,34 +168,6 @@ export default function SignInPage() {
               Register
             </Link>
           </p>
-
-          {/* Demo Credentials */}
-          <div className="mt-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
-            <p className="text-xs font-semibold text-gray-700 text-center mb-3">
-              🔑 Demo Accounts
-            </p>
-            <div className="space-y-2">
-              <div className="bg-white rounded-lg p-3 border border-green-200">
-                <p className="text-xs text-gray-500 mb-1">
-                  💳 <span className="font-semibold text-green-700">Payment Collection</span>
-                </p>
-                <p className="text-xs text-gray-600">
-                  Username: <span className="font-semibold">demo</span>
-                </p>
-              </div>
-              <div className="bg-white rounded-lg p-3 border border-blue-200">
-                <p className="text-xs text-gray-500 mb-1">
-                  📡 <span className="font-semibold text-blue-700">Airtime Reseller</span>
-                </p>
-                <p className="text-xs text-gray-600">
-                  Username: <span className="font-semibold">airtime</span>
-                </p>
-              </div>
-              <p className="text-xs text-gray-500 text-center pt-1">
-                Password: <span className="font-semibold">password123</span> • PIN: <span className="font-semibold">123456</span>
-              </p>
-            </div>
-          </div>
         </div>
       </div>
     </div>
