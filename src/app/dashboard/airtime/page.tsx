@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation'; // Add this import
 import {
   AlertTriangle,
   RotateCcw,
@@ -86,39 +87,28 @@ interface SummaryData {
 // COMPONENT
 // ============================================================================
 export default function AirtimePage() {
-  // State
+  const router = useRouter(); // Add this for navigation
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [summary, setSummary] = useState<SummaryData>({
-    totalTransactions: 0,
-    successfulTransactions: 0,
-    missedSales: 0,
-    successRate: 0,
-    todaySales: 0,
-    todayProfit: 0,
+    totalTransactions: 0, successfulTransactions: 0,
+    missedSales: 0, successRate: 0, todaySales: 0, todayProfit: 0,
   });
   const [loading, setLoading] = useState(true);
   const [selectedFailedLog, setSelectedFailedLog] = useState<Alert | null>(null);
   const [showFailedModal, setShowFailedModal] = useState(false);
 
-  // =========================================================================
-  // FETCH DATA FROM REAL API
-  // =========================================================================
-  useEffect(() => {
-    loadDashboardData();
-  }, []);
+  useEffect(() => { loadDashboardData(); }, []);
 
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      // Fetch all data in parallel
       const [summaryData, transactionsData, alertsData] = await Promise.all([
         api.getTodaySummary(),
-        api.getTransactions({ limit: 10 }),
+        api.getTransactions({ limit: 5 }), // ✅ CHANGED: from 10 to 5 transactions
         api.getAlerts(),
       ]);
 
-      // Set summary
       if (summaryData) {
         setSummary({
           totalTransactions: summaryData.totalTransactions || 0,
@@ -130,42 +120,34 @@ export default function AirtimePage() {
         });
       }
 
-      // Set transactions
+      // 🟢 Backend now returns status as 'delivered' | 'failed' | 'completed' | 'processing'
       if (transactionsData?.transactions) {
         const formatted = transactionsData.transactions.map((txn: any) => ({
-          id: txn.id || txn.transactionId,
+          id: txn.id,
           name: txn.name || 'Customer',
-          phone: txn.phone || txn.phone_number || '',
+          phone: txn.phone || '',
           amount: txn.amount || 0,
-          status: txn.status === 'SUCCESS' ? 'delivered' : txn.status === 'FAILED' ? 'failed' : 'processing',
-          timestamp: formatTimeAgo(txn.timestamp || txn.created_at),
-          failReason: txn.failReason || txn.error_message,
-          failCode: txn.failCode || txn.status,
-          profit: txn.profit || txn.profit_earned,
+          status: txn.status || 'processing',
+          timestamp: formatTimeAgo(txn.timestamp),
+          failReason: txn.failReason,
+          failCode: txn.failCode,
+          profit: txn.profit || 0,
         }));
         setTransactions(formatted);
       }
 
-      // Set alerts
       if (alertsData) {
         const allAlerts: Alert[] = [
-          // Low stock alerts
           ...(alertsData.lowStock || []).map((item: any) => ({
             id: `stock_${item.network}_${item.denomination}`,
             name: networkNames[item.network] || item.network,
-            phone: '',
-            denomination: item.denomination,
-            stock: item.stock,
-            timestamp: '',
-            type: 'low_stock' as const,
+            phone: '', denomination: item.denomination, stock: item.stock,
+            timestamp: '', type: 'low_stock' as const,
           })),
-          // Failed delivery alerts
           ...(alertsData.failedDeliveries || []).map((item: any) => ({
-            id: item.id,
-            name: item.name || 'Customer',
-            phone: item.phone || '',
-            amount: item.amount,
-            timestamp: formatTimeAgo(item.timestamp || item.created_at),
+            id: item.id, name: item.name || 'Customer',
+            phone: item.phone || '', amount: item.amount,
+            timestamp: formatTimeAgo(item.timestamp),
             failReason: item.failReason || 'Delivery failed',
             failCode: item.failCode || 'UNKNOWN',
             type: 'failed_delivery' as const,
@@ -180,44 +162,23 @@ export default function AirtimePage() {
     }
   };
 
-  // =========================================================================
-  // HANDLERS
-  // =========================================================================
-  const handleFailedClick = (log: Alert) => {
-    setSelectedFailedLog(log);
-    setShowFailedModal(true);
-  };
+  const handleFailedClick = (log: Alert) => { setSelectedFailedLog(log); setShowFailedModal(true); };
 
   const handleRetry = async () => {
     if (!selectedFailedLog) return;
-    try {
-      await api.retryTransaction(selectedFailedLog.id);
-      setShowFailedModal(false);
-      setSelectedFailedLog(null);
-      loadDashboardData(); // Refresh
-    } catch (error) {
-      console.error('Retry failed:', error);
-    }
+    try { await api.retryTransaction(selectedFailedLog.id); setShowFailedModal(false); setSelectedFailedLog(null); loadDashboardData(); }
+    catch (error) { console.error('Retry failed:', error); }
   };
 
   const handleRefund = async () => {
     if (!selectedFailedLog) return;
-    try {
-      await api.refundTransaction(selectedFailedLog.id);
-      setShowFailedModal(false);
-      setSelectedFailedLog(null);
-      loadDashboardData(); // Refresh
-    } catch (error) {
-      console.error('Refund failed:', error);
-    }
+    try { await api.refundTransaction(selectedFailedLog.id); setShowFailedModal(false); setSelectedFailedLog(null); loadDashboardData(); }
+    catch (error) { console.error('Refund failed:', error); }
   };
 
-  // =========================================================================
-  // HELPERS
-  // =========================================================================
   const getStatusStyle = (status: string) => {
     switch (status) {
-      case 'delivered': return { bg: 'bg-green-100', text: 'text-green-600', label: 'Delivered', icon: CheckCircle };
+      case 'delivered': case 'completed': return { bg: 'bg-green-100', text: 'text-green-600', label: 'Delivered', icon: CheckCircle };
       case 'failed': return { bg: 'bg-red-100', text: 'text-red-600', label: 'Failed', icon: X };
       case 'processing': return { bg: 'bg-amber-100', text: 'text-amber-600', label: 'Processing', icon: Loader2 };
       default: return { bg: 'bg-gray-100', text: 'text-gray-600', label: status, icon: Clock };
@@ -228,9 +189,6 @@ export default function AirtimePage() {
   const failedDeliveries = alerts.filter(a => a.type === 'failed_delivery');
   const hasAlerts = alerts.length > 0;
 
-  // =========================================================================
-  // LOADING STATE
-  // =========================================================================
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -239,9 +197,6 @@ export default function AirtimePage() {
     );
   }
 
-  // =========================================================================
-  // RENDER
-  // =========================================================================
   return (
     <div className="p-4 space-y-4">
 
@@ -250,30 +205,22 @@ export default function AirtimePage() {
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
           <p className="text-xs text-gray-500">Today's Sales</p>
           <p className="text-xl font-bold text-gray-900">KES {summary.todaySales.toLocaleString()}</p>
-          <div className="flex items-center gap-1 mt-1">
-            <span className="text-xs text-gray-400">From airtime sales</span>
-          </div>
+          <div className="flex items-center gap-1 mt-1"><span className="text-xs text-gray-400">From airtime sales</span></div>
         </div>
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
           <p className="text-xs text-gray-500">Missed Sales</p>
           <p className="text-xl font-bold text-red-500">{summary.missedSales}</p>
-          <div className="flex items-center gap-1 mt-1">
-            <span className="text-xs text-gray-400">Failed transactions</span>
-          </div>
+          <div className="flex items-center gap-1 mt-1"><span className="text-xs text-gray-400">Failed transactions</span></div>
         </div>
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
           <p className="text-xs text-gray-500">Today's Transactions</p>
           <p className="text-xl font-bold text-gray-900">{summary.totalTransactions}</p>
-          <div className="flex items-center gap-1 mt-1">
-            <span className="text-xs text-gray-400">Total orders</span>
-          </div>
+          <div className="flex items-center gap-1 mt-1"><span className="text-xs text-gray-400">Total orders</span></div>
         </div>
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
           <p className="text-xs text-gray-500">Successful Rate</p>
           <p className="text-xl font-bold text-emerald-600">{summary.successRate}%</p>
-          <div className="flex items-center gap-1 mt-1">
-            <span className="text-xs text-gray-400">{summary.successfulTransactions} of {summary.totalTransactions}</span>
-          </div>
+          <div className="flex items-center gap-1 mt-1"><span className="text-xs text-gray-400">{summary.successfulTransactions} of {summary.totalTransactions}</span></div>
         </div>
       </div>
 
@@ -281,52 +228,31 @@ export default function AirtimePage() {
       {hasAlerts && (
         <div className="bg-white rounded-2xl border border-red-100 shadow-sm overflow-hidden">
           <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border-b border-red-100">
-            <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
-              <AlertCircle className="w-4 h-4 text-red-600" />
-            </div>
+            <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center"><AlertCircle className="w-4 h-4 text-red-600" /></div>
             <h3 className="font-semibold text-gray-900">Alerts</h3>
             <span className="ml-auto text-xs text-red-500 font-medium">{alerts.length} issues</span>
           </div>
           <div className="p-3 space-y-2 max-h-[280px] overflow-y-auto">
-            
-            {/* Low Stock Alerts */}
             {lowStockItems.map((item, index) => (
               <div key={`stock-${index}`} className="flex items-center justify-between p-3 bg-red-50/50 rounded-xl">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center shrink-0">
-                    <AlertTriangle className="w-5 h-5 text-red-600" />
-                  </div>
+                  <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center shrink-0"><AlertTriangle className="w-5 h-5 text-red-600" /></div>
                   <div>
-                    <p className="font-semibold text-gray-900 text-sm">
-                      Low Stock: {item.name}
-                    </p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-xs text-gray-500">{item.denomination} denom</span>
-                      <span className="text-gray-300">•</span>
-                      <span className="text-xs font-semibold text-red-600">{item.stock} left</span>
-                    </div>
+                    <p className="font-semibold text-gray-900 text-sm">Low Stock: {item.name}</p>
+                    <div className="flex items-center gap-2 mt-0.5"><span className="text-xs text-gray-500">{item.denomination} denom</span><span className="text-gray-300">•</span><span className="text-xs font-semibold text-red-600">{item.stock} left</span></div>
                   </div>
                 </div>
               </div>
             ))}
-
-            {/* Failed Delivery Alerts */}
             {failedDeliveries.map((log, index) => (
               <div key={`failed-${index}`} className="flex items-center justify-between p-3 bg-red-50/50 rounded-xl">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-                    <X className="w-5 h-5 text-red-600" />
-                  </div>
+                  <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center"><X className="w-5 h-5 text-red-600" /></div>
                   <div>
                     <p className="font-semibold text-gray-900 text-sm">{log.name}</p>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-xs text-gray-400 flex items-center gap-1"><Clock className="w-3 h-3" /> {log.timestamp}</span>
-                      {log.phone && (
-                        <>
-                          <span className="text-gray-300">•</span>
-                          <span className="text-xs text-gray-400">📱 {maskPhone(log.phone)}</span>
-                        </>
-                      )}
+                      {log.phone && (<><span className="text-gray-300">•</span><span className="text-xs text-gray-400">📱 {maskPhone(log.phone)}</span></>)}
                     </div>
                   </div>
                 </div>
@@ -340,8 +266,13 @@ export default function AirtimePage() {
       {/* Transaction History */}
       <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-gray-900">Transaction History</h3>
-          <button className="text-xs text-[#8B1D1D] font-semibold">See All</button>
+          <h3 className="font-semibold text-gray-900">Recent Transactions</h3>
+          <button 
+            onClick={() => router.push('/dashboard/transactions')}
+            className="text-xs text-[#8B1D1D] font-semibold"
+          >
+            See All
+          </button>
         </div>
         {transactions.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-6">No transactions today</p>
@@ -382,25 +313,16 @@ export default function AirtimePage() {
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowFailedModal(false)} />
           <div className="relative bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md p-6">
             <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-6" />
-            <div className="flex justify-center mb-4">
-              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center"><X className="w-8 h-8 text-red-600" /></div>
-            </div>
+            <div className="flex justify-center mb-4"><div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center"><X className="w-8 h-8 text-red-600" /></div></div>
             <h3 className="text-xl font-bold text-gray-900 text-center">{selectedFailedLog.name}</h3>
             <div className="flex items-center justify-center gap-3 mt-2">
               <span className="text-xs text-gray-400 flex items-center gap-1"><Clock className="w-3 h-3" /> {selectedFailedLog.timestamp}</span>
-              {selectedFailedLog.phone && (
-                <>
-                  <span className="text-gray-300">•</span>
-                  <span className="text-xs text-gray-400">📱 {maskPhone(selectedFailedLog.phone)}</span>
-                </>
-              )}
+              {selectedFailedLog.phone && (<><span className="text-gray-300">•</span><span className="text-xs text-gray-400">📱 {maskPhone(selectedFailedLog.phone)}</span></>)}
             </div>
             <div className="bg-red-50 rounded-2xl p-4 mt-4">
               <p className="text-xs font-semibold text-red-400 uppercase tracking-wider mb-2">Failure Reason</p>
               <p className="text-sm text-gray-800 leading-relaxed">{selectedFailedLog.failReason || 'Unknown error'}</p>
-              {selectedFailedLog.failCode && (
-                <p className="text-xs text-red-400 mt-2">Code: {selectedFailedLog.failCode}</p>
-              )}
+              {selectedFailedLog.failCode && (<p className="text-xs text-red-400 mt-2">Code: {selectedFailedLog.failCode}</p>)}
             </div>
             <div className="space-y-3 mt-4">
               <button onClick={handleRetry} className="w-full bg-[#8B1D1D] text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-[#701616]"><RotateCcw className="w-5 h-5" />Retry</button>

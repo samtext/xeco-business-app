@@ -1,517 +1,519 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Search,
   Filter,
-  ChevronDown,
   Wifi,
-  ShoppingCart,
   CreditCard,
-  ArrowUpRight,
-  ArrowDownRight,
-  Phone,
-  Calendar,
   Download,
   X,
   CheckCircle,
   Clock,
   AlertCircle,
+  Loader2,
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
 } from 'lucide-react';
+import { api } from '../../../lib/api';
 
-// Mock transaction data
-const mockTransactions = [
-  {
-    id: 'txn_001',
-    type: 'airtime_sale' as const,
-    network: 'Safaricom',
-    amount: 100,
-    cost: 95,
-    profit: 5,
-    phone: '0723123456',
-    reference: 'ATL123456',
-    timestamp: '2026-01-15T14:30:00',
-    status: 'completed' as const,
-  },
-  {
-    id: 'txn_002',
-    type: 'airtime_sale' as const,
-    network: 'Airtel',
-    amount: 50,
-    cost: 47,
-    profit: 3,
-    phone: '0712123456',
-    reference: 'ATL123457',
-    timestamp: '2026-01-15T13:15:00',
-    status: 'completed' as const,
-  },
-  {
-    id: 'txn_003',
-    type: 'stk_payment' as const,
-    description: 'Atomic Habits - Book',
-    amount: 500,
-    cost: 350,
-    profit: 150,
-    phone: '0705123456',
-    reference: 'STK789012',
-    timestamp: '2026-01-15T12:00:00',
-    status: 'completed' as const,
-  },
-  {
-    id: 'txn_004',
-    type: 'c2b_received' as const,
-    description: 'Till #567890',
-    amount: 1000,
-    cost: 800,
-    profit: 200,
-    phone: '0798123456',
-    reference: 'C2B345678',
-    timestamp: '2026-01-15T10:45:00',
-    status: 'completed' as const,
-  },
-  {
-    id: 'txn_005',
-    type: 'airtime_sale' as const,
-    network: 'Telkom',
-    amount: 20,
-    cost: 18.5,
-    profit: 1.5,
-    phone: '0741123456',
-    reference: 'ATL123458',
-    timestamp: '2026-01-15T09:30:00',
-    status: 'pending' as const,
-  },
-  {
-    id: 'txn_006',
-    type: 'stk_payment' as const,
-    description: 'Rich Dad Poor Dad',
-    amount: 450,
-    cost: 300,
-    profit: 150,
-    phone: '0728987654',
-    reference: 'STK789013',
-    timestamp: '2026-01-15T08:00:00',
-    status: 'failed' as const,
-  },
-  {
-    id: 'txn_007',
-    type: 'airtime_sale' as const,
-    network: 'Safaricom',
-    amount: 250,
-    cost: 238,
-    profit: 12,
-    phone: '0711345678',
-    reference: 'ATL123459',
-    timestamp: '2026-01-14T18:30:00',
-    status: 'completed' as const,
-  },
-  {
-    id: 'txn_008',
-    type: 'c2b_received' as const,
-    description: 'Till #567890',
-    amount: 2500,
-    cost: 2000,
-    profit: 500,
-    phone: '0700234567',
-    reference: 'C2B345679',
-    timestamp: '2026-01-14T16:00:00',
-    status: 'completed' as const,
-  },
-  {
-    id: 'txn_009',
-    type: 'airtime_sale' as const,
-    network: 'Airtel',
-    amount: 100,
-    cost: 93,
-    profit: 7,
-    phone: '0765123456',
-    reference: 'ATL123460',
-    timestamp: '2026-01-14T14:20:00',
-    status: 'completed' as const,
-  },
-  {
-    id: 'txn_010',
-    type: 'stk_payment' as const,
-    description: 'The Psychology of Money',
-    amount: 600,
-    cost: 420,
-    profit: 180,
-    phone: '0734123456',
-    reference: 'STK789014',
-    timestamp: '2026-01-14T11:00:00',
-    status: 'completed' as const,
-  },
-];
+// ============================================================================
+// TYPES
+// ============================================================================
+interface Transaction {
+  id: string;
+  name: string;
+  phone: string;
+  amount: number;
+  status: string;
+  profit: number;
+  timestamp: string;
+  provider: string;
+  mpesaReceipt: string;
+  balance: string;
+  source: string;
+  failReason?: string;
+  failCode?: string;
+}
 
-type TransactionType = 'all' | 'airtime_sale' | 'stk_payment' | 'c2b_received';
-type TransactionStatus = 'all' | 'completed' | 'pending' | 'failed';
+type StatusFilter = 'all' | 'delivered' | 'failed' | 'completed' | 'processing';
 type SortOrder = 'newest' | 'oldest' | 'highest' | 'lowest';
 
+// ============================================================================
+// HELPERS
+// ============================================================================
+const maskPhone = (phone: string) => {
+  if (!phone) return 'xxxxxxxx';
+  const clean = phone.replace('254', '0');
+  if (clean.length >= 10) return clean.slice(0, 4) + 'xxxx' + clean.slice(-2);
+  return clean;
+};
+
+const formatDate = (dateString: string) => {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-KE', { 
+    year: 'numeric', 
+    month: 'short', 
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+const formatTimeAgo = (dateString: string) => {
+  const now = new Date();
+  const date = new Date(dateString);
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins} min ago`;
+  const diffHrs = Math.floor(diffMins / 60);
+  if (diffHrs < 24) return `${diffHrs} hour${diffHrs > 1 ? 's' : ''} ago`;
+  return date.toLocaleDateString('en-KE', { month: 'short', day: 'numeric' });
+};
+
+const formatCurrency = (amount: number) => {
+  return `KES ${amount.toLocaleString()}`;
+};
+
+// ============================================================================
+// COMPONENT
+// ============================================================================
 export default function TransactionsPage() {
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState<TransactionType>('all');
-  const [statusFilter, setStatusFilter] = useState<TransactionStatus>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
   const [showFilters, setShowFilters] = useState(false);
-  const [selectedTransaction, setSelectedTransaction] = useState<typeof mockTransactions[0] | null>(null);
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [dateRange, setDateRange] = useState({ start: '', end: '' });
+  const itemsPerPage = 20;
+
+  // Fetch ALL transactions on mount
+  useEffect(() => { 
+    loadAllTransactions(); 
+  }, []);
+
+  const loadAllTransactions = async () => {
+    setLoading(true);
+    try {
+      // Fetch all transactions without limit
+      const data = await api.getTransactions({ limit: 1000 });
+      
+      if (data?.transactions) {
+        setAllTransactions(data.transactions);
+        setTransactions(data.transactions);
+      } else if (Array.isArray(data)) {
+        setAllTransactions(data);
+        setTransactions(data);
+      }
+    } catch (error) {
+      console.error('Failed to load transactions:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Filter and sort transactions
-  const filteredTransactions = mockTransactions
-    .filter((txn) => {
-      if (typeFilter !== 'all' && txn.type !== typeFilter) return false;
+  const filteredTransactions = allTransactions
+    .filter(txn => {
+      // Status filter
       if (statusFilter !== 'all' && txn.status !== statusFilter) return false;
+      
+      // Date range filter
+      if (dateRange.start) {
+        const txnDate = new Date(txn.timestamp).toISOString().split('T')[0];
+        if (txnDate < dateRange.start) return false;
+      }
+      if (dateRange.end) {
+        const txnDate = new Date(txn.timestamp).toISOString().split('T')[0];
+        if (txnDate > dateRange.end) return false;
+      }
+      
+      // Search query
       if (searchQuery) {
-        const query = searchQuery.toLowerCase();
+        const q = searchQuery.toLowerCase();
         return (
-          txn.phone.includes(query) ||
-          txn.reference.toLowerCase().includes(query) ||
-          (txn.type === 'airtime_sale' && txn.network?.toLowerCase().includes(query)) ||
-          (txn.type === 'stk_payment' && txn.description?.toLowerCase().includes(query)) ||
-          txn.amount.toString().includes(query)
+          txn.name?.toLowerCase().includes(q) ||
+          txn.phone?.includes(q) ||
+          txn.mpesaReceipt?.toLowerCase().includes(q) ||
+          txn.id?.toLowerCase().includes(q) ||
+          txn.amount?.toString().includes(q)
         );
       }
       return true;
     })
     .sort((a, b) => {
       switch (sortOrder) {
-        case 'newest': return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-        case 'oldest': return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-        case 'highest': return b.amount - a.amount;
-        case 'lowest': return a.amount - b.amount;
-        default: return 0;
+        case 'newest': 
+          return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+        case 'oldest': 
+          return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+        case 'highest': 
+          return b.amount - a.amount;
+        case 'lowest': 
+          return a.amount - b.amount;
+        default: 
+          return 0;
       }
     });
 
+  // Pagination
+  const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage);
+  const paginatedTransactions = filteredTransactions.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  // Stats
   const totalAmount = filteredTransactions.reduce((sum, t) => sum + t.amount, 0);
-  const totalProfit = filteredTransactions.reduce((sum, t) => sum + t.profit, 0);
-  const completedCount = filteredTransactions.filter(t => t.status === 'completed').length;
+  const totalProfit = filteredTransactions.reduce((sum, t) => sum + (t.profit || 0), 0);
+  const completedCount = filteredTransactions.filter(t => t.status === 'delivered' || t.status === 'completed').length;
+  const failedCount = filteredTransactions.filter(t => t.status === 'failed').length;
 
-  const getTypeIcon = (type: string) => {
-    switch (type) {
-      case 'airtime_sale': return <Wifi className="w-5 h-5 text-blue-600" />;
-      case 'stk_payment': return <ShoppingCart className="w-5 h-5 text-green-600" />;
-      case 'c2b_received': return <CreditCard className="w-5 h-5 text-orange-600" />;
-      default: return null;
-    }
-  };
-
-  const getTypeLabel = (type: string) => {
-    switch (type) {
-      case 'airtime_sale': return 'Airtime Sale';
-      case 'stk_payment': return 'STK Payment';
-      case 'c2b_received': return 'C2B Received';
-      default: return type;
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
+  const getStatusStyle = (status: string) => {
     switch (status) {
-      case 'completed': return <CheckCircle className="w-4 h-4 text-green-600" />;
-      case 'pending': return <Clock className="w-4 h-4 text-yellow-600" />;
-      case 'failed': return <AlertCircle className="w-4 h-4 text-red-600" />;
-      default: return null;
+      case 'delivered': 
+      case 'completed': 
+        return { bg: 'bg-green-100', text: 'text-green-600', icon: CheckCircle, label: 'Success' };
+      case 'failed': 
+        return { bg: 'bg-red-100', text: 'text-red-600', icon: AlertCircle, label: 'Failed' };
+      case 'processing': 
+        return { bg: 'bg-amber-100', text: 'text-amber-600', icon: Clock, label: 'Processing' };
+      default: 
+        return { bg: 'bg-gray-100', text: 'text-gray-600', icon: Clock, label: status };
     }
   };
 
-  const getTypeBgColor = (type: string) => {
-    switch (type) {
-      case 'airtime_sale': return 'bg-blue-50 border-blue-200';
-      case 'stk_payment': return 'bg-green-50 border-green-200';
-      case 'c2b_received': return 'bg-orange-50 border-orange-200';
-      default: return 'bg-gray-50 border-gray-200';
-    }
+  const clearFilters = () => {
+    setStatusFilter('all');
+    setSortOrder('newest');
+    setSearchQuery('');
+    setDateRange({ start: '', end: '' });
+    setCurrentPage(1);
   };
+
+  const exportToCSV = () => {
+    const headers = ['Date', 'Transaction ID', 'Customer Name', 'Phone', 'Amount', 'Profit', 'Status', 'Receipt'];
+    const csvData = filteredTransactions.map(txn => [
+      formatDate(txn.timestamp),
+      txn.id,
+      txn.name || 'Customer',
+      txn.phone,
+      txn.amount,
+      txn.profit || 0,
+      txn.status,
+      txn.mpesaReceipt || ''
+    ]);
+    
+    const csvContent = [headers, ...csvData].map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `transactions_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 text-[#8B1D1D] animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 space-y-4">
       
-      {/* Summary Bar */}
-      <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-        <div className="grid grid-cols-3 gap-4 text-center">
-          <div>
-            <p className="text-xs text-gray-500">Transactions</p>
-            <p className="text-lg font-bold text-gray-900">{filteredTransactions.length}</p>
-            <p className="text-[10px] text-green-600">{completedCount} completed</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500">Total Amount</p>
-            <p className="text-lg font-bold text-gray-900">KES {totalAmount.toLocaleString()}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500">Total Profit</p>
-            <p className="text-lg font-bold text-green-600">KES {totalProfit.toLocaleString()}</p>
-          </div>
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Transaction History</h1>
+          <p className="text-sm text-gray-500 mt-1">View all your transactions</p>
         </div>
-      </div>
-
-      {/* Search & Filter Bar */}
-      <div className="flex items-center gap-2">
-        {/* Search */}
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search transactions..."
-            className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#8B1D1D]"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-
-        {/* Filter Button */}
         <button
-          onClick={() => setShowFilters(!showFilters)}
-          className={`p-3 rounded-xl border transition-colors ${
-            showFilters || typeFilter !== 'all' || statusFilter !== 'all'
-              ? 'bg-[#8B1D1D] text-white border-[#8B1D1D]'
-              : 'bg-white border-gray-200 text-gray-600'
-          }`}
+          onClick={exportToCSV}
+          className="flex items-center gap-2 px-4 py-2 bg-[#8B1D1D] text-white rounded-xl text-sm font-semibold hover:bg-[#701616] transition-colors"
         >
-          <Filter className="w-5 h-5" />
+          <Download className="w-4 h-4" />
+          Export CSV
         </button>
       </div>
 
-      {/* Filters Panel */}
-      {showFilters && (
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 space-y-4">
-          {/* Type Filter */}
-          <div>
-            <label className="text-xs font-semibold text-gray-500 mb-2 block">TYPE</label>
-            <div className="flex flex-wrap gap-2">
-              {(['all', 'airtime_sale', 'stk_payment', 'c2b_received'] as TransactionType[]).map((type) => (
-                <button
-                  key={type}
-                  onClick={() => setTypeFilter(type)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                    typeFilter === type
-                      ? 'bg-[#8B1D1D] text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  {type === 'all' ? 'All' : getTypeLabel(type)}
-                </button>
-              ))}
-            </div>
-          </div>
+      {/* Stats Summary */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-white rounded-xl p-3 shadow-sm border border-gray-100">
+          <p className="text-xs text-gray-500">Total Transactions</p>
+          <p className="text-xl font-bold text-gray-900">{filteredTransactions.length}</p>
+          <p className="text-xs text-green-600 mt-1">{completedCount} completed</p>
+        </div>
+        <div className="bg-white rounded-xl p-3 shadow-sm border border-gray-100">
+          <p className="text-xs text-gray-500">Total Amount</p>
+          <p className="text-xl font-bold text-gray-900">{formatCurrency(totalAmount)}</p>
+        </div>
+        <div className="bg-white rounded-xl p-3 shadow-sm border border-gray-100">
+          <p className="text-xs text-gray-500">Total Profit</p>
+          <p className="text-xl font-bold text-green-600">{formatCurrency(totalProfit)}</p>
+        </div>
+        <div className="bg-white rounded-xl p-3 shadow-sm border border-gray-100">
+          <p className="text-xs text-gray-500">Failed</p>
+          <p className="text-xl font-bold text-red-600">{failedCount}</p>
+        </div>
+      </div>
 
-          {/* Status Filter */}
-          <div>
-            <label className="text-xs font-semibold text-gray-500 mb-2 block">STATUS</label>
-            <div className="flex flex-wrap gap-2">
-              {(['all', 'completed', 'pending', 'failed'] as TransactionStatus[]).map((status) => (
-                <button
-                  key={status}
-                  onClick={() => setStatusFilter(status)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                    statusFilter === status
-                      ? 'bg-[#8B1D1D] text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  {status.charAt(0).toUpperCase() + status.slice(1)}
-                </button>
-              ))}
-            </div>
+      {/* Search & Filter */}
+      <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+        <div className="flex gap-2">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              placeholder="Search by name, phone, receipt, or ID..."
+              className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#8B1D1D]"
+            />
           </div>
-
-          {/* Sort Order */}
-          <div>
-            <label className="text-xs font-semibold text-gray-500 mb-2 block">SORT BY</label>
-            <div className="flex flex-wrap gap-2">
-              {([
-                { value: 'newest', label: 'Newest' },
-                { value: 'oldest', label: 'Oldest' },
-                { value: 'highest', label: 'Highest Amount' },
-                { value: 'lowest', label: 'Lowest Amount' },
-              ] as const).map((sort) => (
-                <button
-                  key={sort.value}
-                  onClick={() => setSortOrder(sort.value)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                    sortOrder === sort.value
-                      ? 'bg-[#8B1D1D] text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  {sort.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Clear Filters */}
-          <button
-            onClick={() => {
-              setTypeFilter('all');
-              setStatusFilter('all');
-              setSortOrder('newest');
-              setSearchQuery('');
-            }}
-            className="w-full py-2 text-sm text-[#8B1D1D] font-medium hover:underline"
+          <button 
+            onClick={() => setShowFilters(!showFilters)}
+            className={`p-3 rounded-xl border transition-colors ${
+              showFilters || statusFilter !== 'all' || dateRange.start || dateRange.end 
+                ? 'bg-[#8B1D1D] text-white border-[#8B1D1D]' 
+                : 'bg-white border-gray-200 text-gray-600'
+            }`}
           >
-            Clear All Filters
+            <Filter className="w-5 h-5" />
           </button>
         </div>
-      )}
 
-      {/* Transaction List */}
-      <div className="space-y-2">
-        {filteredTransactions.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500">No transactions found</p>
-            <p className="text-sm text-gray-400 mt-1">Try adjusting your filters</p>
-          </div>
-        ) : (
-          filteredTransactions.map((txn) => (
-            <button
-              key={txn.id}
-              onClick={() => setSelectedTransaction(txn)}
-              className={`w-full text-left p-3 rounded-xl border transition-colors hover:shadow-sm ${getTypeBgColor(txn.type)}`}
+        {/* Expandable Filters */}
+        {showFilters && (
+          <div className="mt-4 pt-4 border-t border-gray-100 space-y-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-2 block">STATUS</label>
+              <div className="flex flex-wrap gap-2">
+                {(['all', 'delivered', 'failed', 'processing'] as StatusFilter[]).map(s => (
+                  <button 
+                    key={s} 
+                    onClick={() => {
+                      setStatusFilter(s);
+                      setCurrentPage(1);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${
+                      statusFilter === s ? 'bg-[#8B1D1D] text-white' : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-2 block">SORT BY</label>
+              <div className="flex flex-wrap gap-2">
+                {(['newest', 'oldest', 'highest', 'lowest'] as SortOrder[]).map(s => (
+                  <button 
+                    key={s} 
+                    onClick={() => setSortOrder(s)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${
+                      sortOrder === s ? 'bg-[#8B1D1D] text-white' : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-2 block">DATE RANGE</label>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="date"
+                  value={dateRange.start}
+                  onChange={(e) => {
+                    setDateRange({ ...dateRange, start: e.target.value });
+                    setCurrentPage(1);
+                  }}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  placeholder="Start Date"
+                />
+                <input
+                  type="date"
+                  value={dateRange.end}
+                  onChange={(e) => {
+                    setDateRange({ ...dateRange, end: e.target.value });
+                    setCurrentPage(1);
+                  }}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  placeholder="End Date"
+                />
+              </div>
+            </div>
+
+            <button 
+              onClick={clearFilters}
+              className="w-full py-2 text-sm text-[#8B1D1D] font-medium hover:underline"
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm">
-                    {getTypeIcon(txn.type)}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-gray-900">
-                        {txn.type === 'airtime_sale' && `${txn.network} Airtime`}
-                        {txn.type === 'stk_payment' && txn.description}
-                        {txn.type === 'c2b_received' && txn.description}
-                      </p>
-                      {getStatusIcon(txn.status)}
-                    </div>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {txn.phone} • {txn.reference}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-bold text-gray-900">
-                    KES {txn.amount}
-                  </p>
-                  <p className="text-xs text-green-600">
-                    +KES {txn.profit}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center justify-between mt-2 pt-2 border-t border-white/50">
-                <span className="text-[10px] text-gray-400">
-                  {new Date(txn.timestamp).toLocaleDateString('en-KE', {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </span>
-                <span className="text-[10px] text-gray-500 uppercase font-medium">
-                  {getTypeLabel(txn.type)}
-                </span>
-              </div>
+              Clear All Filters
             </button>
-          ))
+          </div>
         )}
       </div>
 
+      {/* Transaction List */}
+      <div className="space-y-2">
+        {paginatedTransactions.length === 0 ? (
+          <div className="bg-white rounded-xl p-12 text-center border border-gray-100">
+            <p className="text-gray-500">No transactions found</p>
+          </div>
+        ) : (
+          paginatedTransactions.map((txn) => {
+            const style = getStatusStyle(txn.status);
+            const Icon = style.icon;
+            return (
+              <button 
+                key={txn.id} 
+                onClick={() => setSelectedTransaction(txn)}
+                className="w-full text-left p-4 rounded-xl bg-white border border-gray-100 hover:shadow-md transition-all"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 ${style.bg} rounded-full flex items-center justify-center shrink-0`}>
+                      {typeof Icon === 'function' && <Icon className={`w-5 h-5 ${style.text}`} />}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{txn.name || 'Customer'}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        📱 {maskPhone(txn.phone)} • {txn.mpesaReceipt?.slice(0, 10) || txn.id?.slice(0, 8)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-base font-bold text-gray-900">{formatCurrency(txn.amount)}</p>
+                    {txn.profit > 0 && (
+                      <p className="text-xs text-green-600">+{formatCurrency(txn.profit)}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-50">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-3 h-3 text-gray-400" />
+                    <span className="text-xs text-gray-400">{formatTimeAgo(txn.timestamp)}</span>
+                  </div>
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${style.bg} ${style.text}`}>
+                    {style.label}
+                  </span>
+                </div>
+              </button>
+            );
+          })
+        )}
+      </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between bg-white rounded-xl p-3 border border-gray-100">
+          <p className="text-xs text-gray-500">
+            Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredTransactions.length)} of {filteredTransactions.length}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="p-2 rounded-lg border border-gray-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="px-3 py-1 text-sm text-gray-600">
+              {currentPage} / {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="p-2 rounded-lg border border-gray-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Transaction Detail Modal */}
       {selectedTransaction && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={() => setSelectedTransaction(null)}
-          />
-          <div className="relative bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[80vh] overflow-y-auto p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-bold text-gray-900">Transaction Detail</h3>
-              <button
-                onClick={() => setSelectedTransaction(null)}
-                className="p-1 hover:bg-gray-100 rounded-lg"
-              >
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedTransaction(null)} />
+          <div className="relative bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[85vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-100 p-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">Transaction Details</h3>
+              <button onClick={() => setSelectedTransaction(null)} className="p-1 hover:bg-gray-100 rounded-lg">
                 <X className="w-5 h-5" />
               </button>
             </div>
-
-            <div className="space-y-4">
-              {/* Type & Status */}
-              <div className="flex items-center justify-center gap-3">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
-                  {getTypeIcon(selectedTransaction.type)}
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">
-                    {getTypeLabel(selectedTransaction.type)}
-                  </p>
-                  <div className="flex items-center gap-1 mt-1">
-                    {getStatusIcon(selectedTransaction.status)}
-                    <span className="text-xs capitalize">{selectedTransaction.status}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Amount */}
-              <div className="text-center py-4 bg-gray-50 rounded-xl">
+            
+            <div className="p-5 space-y-4">
+              <div className="text-center py-5 bg-gray-50 rounded-xl">
                 <p className="text-xs text-gray-500 mb-1">Amount</p>
-                <p className="text-3xl font-bold text-gray-900">
-                  KES {selectedTransaction.amount}
-                </p>
-                <p className="text-sm text-green-600 mt-1">
-                  Profit: +KES {selectedTransaction.profit}
-                </p>
-              </div>
-
-              {/* Details */}
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-500">Reference</span>
-                  <span className="text-sm font-medium">{selectedTransaction.reference}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-500">Phone</span>
-                  <span className="text-sm font-medium">{selectedTransaction.phone}</span>
-                </div>
-                {selectedTransaction.type === 'airtime_sale' && (
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-500">Network</span>
-                    <span className="text-sm font-medium">{selectedTransaction.network}</span>
-                  </div>
+                <p className="text-3xl font-bold text-gray-900">{formatCurrency(selectedTransaction.amount)}</p>
+                {selectedTransaction.profit > 0 && (
+                  <p className="text-sm text-green-600 mt-2">Profit: +{formatCurrency(selectedTransaction.profit)}</p>
                 )}
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-500">Cost</span>
-                  <span className="text-sm font-medium">KES {selectedTransaction.cost}</span>
+              </div>
+              
+              <div className="space-y-3">
+                <div className="flex justify-between py-2 border-b border-gray-100">
+                  <span className="text-sm text-gray-500">Transaction ID</span>
+                  <span className="text-sm font-mono font-medium text-gray-900">{selectedTransaction.id}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-500">Profit</span>
-                  <span className="text-sm font-medium text-green-600">KES {selectedTransaction.profit}</span>
+                <div className="flex justify-between py-2 border-b border-gray-100">
+                  <span className="text-sm text-gray-500">Customer</span>
+                  <span className="text-sm font-medium text-gray-900">{selectedTransaction.name || 'Customer'}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-500">Date & Time</span>
-                  <span className="text-sm font-medium">
-                    {new Date(selectedTransaction.timestamp).toLocaleDateString('en-KE', {
-                      day: 'numeric',
-                      month: 'long',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
+                <div className="flex justify-between py-2 border-b border-gray-100">
+                  <span className="text-sm text-gray-500">Phone</span>
+                  <span className="text-sm font-medium text-gray-900">{maskPhone(selectedTransaction.phone)}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-gray-100">
+                  <span className="text-sm text-gray-500">Receipt</span>
+                  <span className="text-sm font-mono font-medium text-gray-900">{selectedTransaction.mpesaReceipt || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between py-2 border-b border-gray-100">
+                  <span className="text-sm text-gray-500">Status</span>
+                  <span className={`text-sm font-semibold ${getStatusStyle(selectedTransaction.status).text}`}>
+                    {getStatusStyle(selectedTransaction.status).label}
                   </span>
                 </div>
+                <div className="flex justify-between py-2 border-b border-gray-100">
+                  <span className="text-sm text-gray-500">Date & Time</span>
+                  <span className="text-sm font-medium text-gray-900">{formatDate(selectedTransaction.timestamp)}</span>
+                </div>
+                {selectedTransaction.failReason && (
+                  <div className="py-2">
+                    <span className="text-sm text-gray-500 block mb-2">Failure Reason</span>
+                    <div className="bg-red-50 rounded-xl p-3">
+                      <p className="text-sm text-red-700">{selectedTransaction.failReason}</p>
+                      {selectedTransaction.failCode && (
+                        <p className="text-xs text-red-500 mt-1">Code: {selectedTransaction.failCode}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
-
-              {/* Close Button */}
-              <button
-                onClick={() => setSelectedTransaction(null)}
-                className="w-full bg-[#8B1D1D] text-white py-3 rounded-lg font-semibold hover:bg-[#701616] transition-colors"
+              
+              <button 
+                onClick={() => setSelectedTransaction(null)} 
+                className="w-full bg-[#8B1D1D] text-white py-3 rounded-xl font-semibold hover:bg-[#701616] transition-colors mt-4"
               >
                 Close
               </button>
@@ -519,12 +521,6 @@ export default function TransactionsPage() {
           </div>
         </div>
       )}
-
-      {/* Download Button */}
-      <button className="w-full bg-white border-2 border-[#8B1D1D] text-[#8B1D1D] py-3 rounded-lg font-semibold hover:bg-[#8B1D1D]/5 transition-colors flex items-center justify-center gap-2">
-        <Download className="w-4 h-4" />
-        Download Statement
-      </button>
     </div>
   );
 }
