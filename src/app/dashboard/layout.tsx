@@ -23,6 +23,8 @@ interface MerchantData {
   businessName: string;
   serviceType: string;
   tillNumber: string;
+  phone: string;
+  isActive: boolean;
 }
 
 // ============================================================================
@@ -152,12 +154,81 @@ function DashboardSkeleton() {
   );
 }
 
+// ============================================================================
+// 🔒 AUTHENTICATION CHECK COMPONENT
+// ============================================================================
+function AuthGuard({ children, router }: { children: React.ReactNode; router: any }) {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const checkAuth = () => {
+      const token = localStorage.getItem('authToken');
+      const merchantId = localStorage.getItem('merchantId');
+      
+      // No token found - not logged in
+      if (!token || !merchantId) {
+        console.log('🔒 AuthGuard: No token found, redirecting to login');
+        router.push('/auth/signin');
+        setIsAuthenticated(false);
+        return;
+      }
+      
+      // Verify token hasn't expired (optional but recommended)
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        const exp = payload.exp * 1000; // Convert to milliseconds
+        
+        if (Date.now() > exp) {
+          console.log('🔒 AuthGuard: Token expired');
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('merchantId');
+          localStorage.removeItem('serviceType');
+          router.push('/auth/signin');
+          setIsAuthenticated(false);
+          return;
+        }
+      } catch (e) {
+        console.error('AuthGuard: Invalid token format', e);
+        router.push('/auth/signin');
+        setIsAuthenticated(false);
+        return;
+      }
+      
+      // Authenticated!
+      setIsAuthenticated(true);
+    };
+    
+    checkAuth();
+  }, [router]);
+
+  // Still checking - show loading
+  if (isAuthenticated === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#8B1D1D] mx-auto"></div>
+          <p className="mt-4 text-gray-600">Verifying access...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  // Not authenticated - don't render anything (redirect already happened)
+  if (!isAuthenticated) {
+    return null;
+  }
+  
+  // Authenticated - show the dashboard
+  return <>{children}</>;
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [showSidebar, setShowSidebar] = useState(false);
   const [showBalance, setShowBalance] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isAuthChecked, setIsAuthChecked] = useState(false);
   
   const [merchant, setMerchant] = useState<MerchantData>({
     fullName: '',
@@ -165,6 +236,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     businessName: '',
     serviceType: 'airtime',
     tillNumber: '',
+    phone: '',
+    isActive: true,
   });
   const [floatData, setFloatData] = useState<FloatData>({ 
     aggregatorFloat: 0, 
@@ -175,12 +248,38 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isLoading, setIsLoading] = useState(true);
   const [serviceType, setServiceType] = useState('airtime');
 
+  // ✅ STEP 1: Check authentication FIRST
   useEffect(() => {
     const token = localStorage.getItem('authToken');
-    if (!token) {
+    const merchantId = localStorage.getItem('merchantId');
+    
+    if (!token || !merchantId) {
+      console.log('🔒 No auth token, redirecting to login');
       router.push('/auth/signin');
       return;
     }
+    
+    // Verify token hasn't expired
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const exp = payload.exp * 1000;
+      
+      if (Date.now() > exp) {
+        console.log('🔒 Token expired, redirecting to login');
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('merchantId');
+        localStorage.removeItem('serviceType');
+        router.push('/auth/signin');
+        return;
+      }
+    } catch (e) {
+      console.error('Invalid token format:', e);
+      router.push('/auth/signin');
+      return;
+    }
+    
+    // ✅ Authentication passed, load data
+    setIsAuthChecked(true);
     loadAllData(token);
   }, []);
 
@@ -217,18 +316,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       });
       const meJson = await meRes.json();
       
+      console.log('API Response:', meJson);
+      
       if (meJson.success) {
         const d = meJson.data;
+        
         const type = d.business?.serviceType === 'AIRTIME_AUTOMATION' ? 'airtime' : 'payment_collection';
+        
         setMerchant({
-          fullName: d.fullName || 'Samuel',
+          fullName: d.fullName || '',
           email: d.email || '',
-          businessName: d.business?.businessName || 'Sam Airtime Shop',
+          businessName: d.business?.businessName || '',
           serviceType: type,
-          tillNumber: d.business?.tillNumber || '4049263',
+          tillNumber: d.business?.tillNumber || '',
+          phone: d.phone || '',
+          isActive: true,
         });
+        
         setServiceType(type);
         localStorage.setItem('serviceType', type);
+        localStorage.setItem('merchantTill', d.business?.tillNumber || '');
       }
 
       await fetchFloatOnly();
@@ -246,9 +353,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const badgeLabel = isAirtime ? '📡 Airtime Reseller' : '💳 Payment Collection';
   const homePath = isAirtime ? '/dashboard/airtime' : '/dashboard/payments';
   
-  // UPDATED: Hide header on Store AND Transactions page
   const hideHeader = pathname === '/dashboard/store' || pathname === '/dashboard/transactions';
-  
   const isFullScreen = pathname === '/dashboard/profile';
 
   const formatBalance = (amount: number) => {
@@ -264,7 +369,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { key: 'profile', icon: User, label: 'Profile', href: '/dashboard/profile', active: pathname === '/dashboard/profile' },
   ];
 
-  // Updated sidebar items - dashboard specific, removed bottom-nav duplicates
   const sidebarItems: { key: string; icon: any; label: string; href: string }[] = [
     { key: 'transactions', icon: Receipt, label: 'Transaction History', href: '/dashboard/transactions' },
     { key: 'earnings', icon: Wallet, label: 'My Earnings', href: '/dashboard/earnings' },
@@ -276,6 +380,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     localStorage.clear();
     router.push('/auth/signin');
   };
+
+  // ✅ Show loading while checking auth OR loading data
+  if (!isAuthChecked || isLoading) {
+    return <DashboardSkeleton />;
+  }
 
   if (isFullScreen) return <div className="min-h-screen bg-white">{children}</div>;
 
@@ -299,11 +408,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
-  // 🦴 SHOW SKELETON WHILE LOADING
-  if (isLoading) {
-    return <DashboardSkeleton />;
-  }
-
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <header className={`${headerBg} text-white sticky top-0 z-50`}>
@@ -322,8 +426,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <div className="flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-lg">
                 <Store className="w-3.5 h-3.5" />
                 <div className="flex flex-col">
-                  <span className="text-sm font-medium truncate max-w-[120px]">{merchant.businessName}</span>
-                  <span className="text-[10px] text-white/50">Till: {merchant.tillNumber}</span>
+                  <span className="text-sm font-medium truncate max-w-[120px]">{merchant.businessName || 'Business'}</span>
+                  <span className="text-[10px] text-white/50">Till: {merchant.tillNumber || 'Not set'}</span>
                 </div>
               </div>
             </div>
@@ -387,8 +491,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
             <div className="bg-gray-50 rounded-xl p-4 mb-6">
               <div className="flex items-center gap-3 mb-3">
-                <div className={`w-10 h-10 ${avatarBg} rounded-full flex items-center justify-center text-white font-bold`}>{merchant.fullName.charAt(0)}</div>
-                <div><p className="font-semibold text-gray-900">{merchant.fullName}</p><p className="text-xs text-gray-500">{merchant.businessName}</p></div>
+                <div className={`w-10 h-10 ${avatarBg} rounded-full flex items-center justify-center text-white font-bold`}>{merchant.fullName?.charAt(0) || '?'}</div>
+                <div><p className="font-semibold text-gray-900">{merchant.fullName || 'Merchant'}</p><p className="text-xs text-gray-500">{merchant.businessName || 'Business'}</p></div>
               </div>
               {isAirtime ? (
                 <div className="space-y-1"><div className="flex justify-between text-sm"><span className="text-gray-500">Airtime Float:</span><span className="font-semibold">{formatBalance(floatData.aggregatorFloat)}</span></div><div className="flex justify-between text-sm"><span className="text-gray-500">Till:</span><span className="font-semibold">{formatBalance(floatData.tillBalance)}</span></div></div>

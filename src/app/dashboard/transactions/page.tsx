@@ -62,18 +62,6 @@ const formatDate = (dateString: string) => {
   });
 };
 
-const formatTimeAgo = (dateString: string) => {
-  const now = new Date();
-  const date = new Date(dateString);
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins} min ago`;
-  const diffHrs = Math.floor(diffMins / 60);
-  if (diffHrs < 24) return `${diffHrs} hour${diffHrs > 1 ? 's' : ''} ago`;
-  return date.toLocaleDateString('en-KE', { month: 'short', day: 'numeric' });
-};
-
 const formatCurrency = (amount: number) => {
   return `KES ${amount.toLocaleString()}`;
 };
@@ -180,13 +168,13 @@ export default function TransactionsPage() {
     switch (status) {
       case 'delivered': 
       case 'completed': 
-        return { bg: 'bg-green-100', text: 'text-green-600', icon: CheckCircle, label: 'Success' };
+        return { bg: 'bg-green-100', text: 'text-green-700', label: 'Success' };
       case 'failed': 
-        return { bg: 'bg-red-100', text: 'text-red-600', icon: AlertCircle, label: 'Failed' };
+        return { bg: 'bg-red-100', text: 'text-red-700', label: 'Failed' };
       case 'processing': 
-        return { bg: 'bg-amber-100', text: 'text-amber-600', icon: Clock, label: 'Processing' };
+        return { bg: 'bg-amber-100', text: 'text-amber-700', label: 'Processing' };
       default: 
-        return { bg: 'bg-gray-100', text: 'text-gray-600', icon: Clock, label: status };
+        return { bg: 'bg-gray-100', text: 'text-gray-700', label: status };
     }
   };
 
@@ -372,83 +360,113 @@ export default function TransactionsPage() {
         )}
       </div>
 
-      {/* Transaction List */}
-      <div className="space-y-2">
-        {paginatedTransactions.length === 0 ? (
-          <div className="bg-white rounded-xl p-12 text-center border border-gray-100">
-            <p className="text-gray-500">No transactions found</p>
-          </div>
-        ) : (
-          paginatedTransactions.map((txn) => {
-            const style = getStatusStyle(txn.status);
-            const Icon = style.icon;
-            return (
-              <button 
-                key={txn.id} 
-                onClick={() => setSelectedTransaction(txn)}
-                className="w-full text-left p-4 rounded-xl bg-white border border-gray-100 hover:shadow-md transition-all"
+      {/* Transactions Table - Changed from cards to table */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Date & Time</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Transaction ID</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Customer</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Phone</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Amount</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Profit</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600">Status</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginatedTransactions.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                    No transactions found
+                  </td>
+                </tr>
+              ) : (
+                paginatedTransactions.map((txn) => {
+                  const style = getStatusStyle(txn.status);
+                  return (
+                    <tr 
+                      key={txn.id} 
+                      className="border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer"
+                      onClick={() => setSelectedTransaction(txn)}
+                    >
+                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                        <div className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3 text-gray-400" />
+                          <span>{formatDate(txn.timestamp)}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-xs font-mono text-gray-500">{txn.id.slice(0, 12)}...</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-sm font-medium text-gray-900">{txn.name || 'Customer'}</p>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{maskPhone(txn.phone)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <p className="text-sm font-bold text-gray-900">{formatCurrency(txn.amount)}</p>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {txn.profit > 0 ? (
+                          <p className="text-sm font-semibold text-green-600">+{formatCurrency(txn.profit)}</p>
+                        ) : (
+                          <p className="text-sm text-gray-400">-</p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${style.bg} ${style.text}`}>
+                          {style.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedTransaction(txn);
+                          }}
+                          className="text-[#8B1D1D] hover:text-[#701616] text-xs font-semibold"
+                        >
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-white">
+            <p className="text-xs text-gray-500">
+              Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredTransactions.length)} of {filteredTransactions.length}
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-2 rounded-lg border border-gray-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 ${style.bg} rounded-full flex items-center justify-center shrink-0`}>
-                      {typeof Icon === 'function' && <Icon className={`w-5 h-5 ${style.text}`} />}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">{txn.name || 'Customer'}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        📱 {maskPhone(txn.phone)} • {txn.mpesaReceipt?.slice(0, 10) || txn.id?.slice(0, 8)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-base font-bold text-gray-900">{formatCurrency(txn.amount)}</p>
-                    {txn.profit > 0 && (
-                      <p className="text-xs text-green-600">+{formatCurrency(txn.profit)}</p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-50">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-3 h-3 text-gray-400" />
-                    <span className="text-xs text-gray-400">{formatTimeAgo(txn.timestamp)}</span>
-                  </div>
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${style.bg} ${style.text}`}>
-                    {style.label}
-                  </span>
-                </div>
+                <ChevronLeft className="w-4 h-4" />
               </button>
-            );
-          })
+              <span className="px-3 py-1 text-sm text-gray-600">
+                {currentPage} / {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-2 rounded-lg border border-gray-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         )}
       </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between bg-white rounded-xl p-3 border border-gray-100">
-          <p className="text-xs text-gray-500">
-            Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredTransactions.length)} of {filteredTransactions.length}
-          </p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="p-2 rounded-lg border border-gray-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="px-3 py-1 text-sm text-gray-600">
-              {currentPage} / {totalPages}
-            </span>
-            <button
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="p-2 rounded-lg border border-gray-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Transaction Detail Modal */}
       {selectedTransaction && (

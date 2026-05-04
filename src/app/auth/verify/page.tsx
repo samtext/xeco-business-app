@@ -18,9 +18,6 @@ function maskEmail(email: string): string {
   return `${masked}@${domain}`;
 }
 
-// 🛡️ Prevent double send with module-level flag
-let didSendCode = false;
-
 export default function VerifyPage() {
   const router = useRouter();
   const [code, setCode] = useState('');
@@ -32,7 +29,12 @@ export default function VerifyPage() {
   const [merchantId, setMerchantId] = useState('');
   const [timeLeft, setTimeLeft] = useState(CODE_EXPIRY_SECONDS);
   const [isExpired, setIsExpired] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  
+  // ✅ FIX: Use useRef instead of module variable
+  const hasSentCode = useRef(false);
 
   useEffect(() => {
     const storedEmail = localStorage.getItem('verificationEmail') || 'samtext454@gmail.com';
@@ -47,10 +49,9 @@ export default function VerifyPage() {
     setMaskedEmail(maskEmail(storedEmail));
     setMerchantId(storedMerchantId);
     
-    // 🛡️ Prevent double send with multiple checks
-    const alreadySent = localStorage.getItem('codeSent');
-    if (!alreadySent && !didSendCode) {
-      didSendCode = true;
+    // ✅ Use useRef to prevent double send
+    if (!hasSentCode.current) {
+      hasSentCode.current = true;
       sendCode(storedMerchantId, storedEmail);
     }
     
@@ -59,7 +60,7 @@ export default function VerifyPage() {
     }
   }, []);
 
-  // Countdown timer
+  // Countdown timer for code expiry
   useEffect(() => {
     if (timeLeft <= 0) {
       setIsExpired(true);
@@ -72,6 +73,17 @@ export default function VerifyPage() {
     
     return () => clearInterval(timer);
   }, [timeLeft]);
+
+  // Resend cooldown timer
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    
+    const timer = setInterval(() => {
+      setResendCooldown((prev) => prev - 1);
+    }, 1000);
+    
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
 
   // Format time as MM:SS
   const formatTime = (seconds: number): string => {
@@ -94,9 +106,12 @@ export default function VerifyPage() {
         setIsExpired(false);
         localStorage.setItem('codeSent', 'true');
         console.log('✅ Code sent to', emailAddr);
+      } else {
+        const data = await response.json();
+        console.error('Send code failed:', data.error);
       }
     } catch (err) {
-      console.log('Send code failed, using fallback PIN');
+      console.error('Send code error:', err);
     }
   };
 
@@ -128,6 +143,10 @@ export default function VerifyPage() {
       setCode(newCode);
       setError('');
       
+      const newIndex = code.length;
+      setActiveIndex(newIndex);
+      setTimeout(() => setActiveIndex(null), 300);
+      
       if (newCode.length === 6) {
         handleVerify(newCode);
       }
@@ -137,6 +156,9 @@ export default function VerifyPage() {
   const handleDelete = () => {
     setCode(code.slice(0, -1));
     setError('');
+    const deletedIndex = code.length - 1;
+    setActiveIndex(deletedIndex);
+    setTimeout(() => setActiveIndex(null), 300);
   };
 
   const handleVerify = async (verificationCode: string) => {
@@ -147,17 +169,8 @@ export default function VerifyPage() {
     
     setIsLoading(true);
     setError('');
+    setActiveIndex(-1);
     
-    // Try fallback PIN first (faster, no network)
-    const storedPin = localStorage.getItem('merchantPin') || '4049263';
-    if (verificationCode === storedPin) {
-      localStorage.removeItem('verificationEmail');
-      localStorage.removeItem('codeSent');
-      router.push('/dashboard');
-      return;
-    }
-    
-    // Try backend verification
     try {
       const response = await fetch(`${API_URL}/api/v1/merchant/auth/verify-pin`, {
         method: 'POST',
@@ -168,28 +181,58 @@ export default function VerifyPage() {
       const data = await response.json();
 
       if (response.ok && data.success) {
+        const token = localStorage.getItem('authToken');
+        console.log('\n🔵 [VERIFY] ===== VERIFICATION SUCCESS =====');
+        console.log('🔵 [VERIFY] Token exists:', !!token);
+        
         localStorage.removeItem('verificationEmail');
         localStorage.removeItem('codeSent');
         router.push('/dashboard');
         return;
+      } else {
+        setError(data.error || 'Invalid verification code. Please try again.');
+        setCode('');
+        setActiveIndex(-2);
+        setTimeout(() => setActiveIndex(null), 500);
       }
     } catch (err) {
-      // Backend unavailable - already checked fallback above
+      console.error('Verification error:', err);
+      setError('Network error. Please check your connection and try again.');
+      setCode('');
+      setActiveIndex(-2);
+      setTimeout(() => setActiveIndex(null), 500);
+    } finally {
+      setIsLoading(false);
+      setActiveIndex(null);
+      if (inputRef.current) inputRef.current.focus();
     }
-
-    // If we get here, code is invalid
-    setError('Invalid code. Please try again.');
-    setCode('');
-    setIsLoading(false);
-    if (inputRef.current) inputRef.current.focus();
   };
 
   const handleResend = () => {
+    if (resendCooldown > 0) {
+      setError(`Please wait ${resendCooldown} seconds before requesting another code.`);
+      return;
+    }
+    
     localStorage.removeItem('codeSent');
-    didSendCode = false;
     setCode('');
     setError('');
+    setIsExpired(false);
+    setResendCooldown(30);
     sendCode(merchantId, email);
+  };
+
+  const getDotAnimation = (index: number) => {
+    if (activeIndex === -1 && isLoading) {
+      return 'animate-pulse scale-110';
+    }
+    if (activeIndex === -2) {
+      return 'animate-shake bg-red-100 border-red-400';
+    }
+    if (activeIndex === index) {
+      return 'scale-110 transition-all duration-200';
+    }
+    return '';
   };
 
   return (
@@ -252,14 +295,17 @@ export default function VerifyPage() {
             {[0, 1, 2, 3, 4, 5].map((index) => (
               <div
                 key={index}
-                className={`w-14 h-14 rounded-lg border-2 flex items-center justify-center transition-all ${
+                className={`w-14 h-14 rounded-lg border-2 flex items-center justify-center transition-all duration-200 ${
                   index < code.length 
                     ? 'border-[#8B1D1D] bg-[#8B1D1D]/10' 
                     : isExpired ? 'border-red-200 bg-red-50' : 'border-gray-300 bg-gray-50'
-                }`}
+                } ${getDotAnimation(index)}`}
               >
                 {index < code.length && (
-                  <div className={`w-3 h-3 rounded-full ${isExpired ? 'bg-red-400' : 'bg-[#8B1D1D]'}`} />
+                  <div className={`w-3 h-3 rounded-full ${isExpired ? 'bg-red-400' : 'bg-[#8B1D1D]'} transition-all duration-200`} />
+                )}
+                {isLoading && index === code.length && index < 6 && (
+                  <div className="w-3 h-3 rounded-full bg-[#8B1D1D]/40 animate-pulse" />
                 )}
               </div>
             ))}
@@ -309,15 +355,26 @@ export default function VerifyPage() {
           <div className="text-center">
             <button
               onClick={handleResend}
-              disabled={isLoading}
-              className="flex items-center gap-2 mx-auto text-sm text-[#8B1D1D] font-semibold hover:underline disabled:opacity-50"
+              disabled={isLoading || resendCooldown > 0}
+              className="flex items-center gap-2 mx-auto text-sm text-[#8B1D1D] font-semibold hover:underline disabled:opacity-50 disabled:hover:no-underline"
             >
-              <RefreshCw className="w-4 h-4" />
-              Resend Code
+              <RefreshCw className={`w-4 h-4 ${resendCooldown > 0 ? 'animate-spin' : ''}`} />
+              {resendCooldown > 0 ? `Resend available in ${resendCooldown}s` : 'Resend Code'}
             </button>
           </div>
         </div>
       </div>
+
+      <style jsx>{`
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          25% { transform: translateX(-5px); }
+          75% { transform: translateX(5px); }
+        }
+        .animate-shake {
+          animation: shake 0.3s ease-in-out;
+        }
+      `}</style>
     </div>
   );
 }

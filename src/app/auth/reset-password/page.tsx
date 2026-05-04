@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Lock, Eye, EyeOff, Check, Shield } from 'lucide-react';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://xecoflow.onrender.com';
+
 // Separate component that uses useSearchParams
 function ResetPasswordForm() {
   const router = useRouter();
@@ -53,11 +55,28 @@ function ResetPasswordForm() {
     setIsLoading(true);
     setError('');
 
-    setTimeout(() => {
-      console.log('Password reset:', { token, password });
+    try {
+      const response = await fetch(`${API_URL}/api/v1/merchant/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || 'Failed to reset password. Please try again.');
+        setIsLoading(false);
+        return;
+      }
+
       setIsSubmitted(true);
+    } catch (err) {
+      console.error('Reset password error:', err);
+      setError('Network error. Please check your connection.');
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   // Invalid token view

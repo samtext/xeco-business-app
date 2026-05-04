@@ -21,7 +21,7 @@ export default function SignInPage() {
     setError('');
 
     try {
-      // Call backend login endpoint
+      // 1. Call backend login endpoint
       const response = await fetch(`${API_URL}/api/v1/merchant/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -51,10 +51,38 @@ export default function SignInPage() {
       const serviceType = merchant.serviceType === 'AIRTIME_AUTOMATION' ? 'airtime' : 'payment_collection';
       localStorage.setItem('serviceType', serviceType);
 
-      // Redirect to PIN verification
+      // ✅ Use sessionStorage to prevent duplicate requests across React Strict Mode mounts
+      const requestKey = `send_code_${merchant.id}`;
+      const requestSent = sessionStorage.getItem(requestKey);
+      
+      if (!requestSent) {
+        sessionStorage.setItem(requestKey, 'true');
+        
+        // 2. Send verification code
+        fetch(`${API_URL}/api/v1/merchant/auth/send-code`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ 
+            merchantId: merchant.id,
+            email: merchant.email 
+          }),
+        }).catch(err => console.error('Background email send failed:', err));
+        
+        // Clear session storage after 30 seconds (allow resend if needed)
+        setTimeout(() => {
+          sessionStorage.removeItem(requestKey);
+        }, 30000);
+      }
+      
+      // 3. Immediately redirect to PIN verification page
+      console.log('➡️ Redirecting to verification page...');
       router.push(`/auth/verify?email=${encodeURIComponent(merchant.email)}`);
 
     } catch (err) {
+      console.error('Login error:', err);
       setError('Network error. Please check your connection.');
       setIsLoading(false);
     }
