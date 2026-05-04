@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';  // ✅ ADD THIS IMPORT
 import {
   Store,
   CreditCard,
@@ -35,6 +36,7 @@ interface MerchantData {
 }
 
 export default function SettingsPage() {
+  const router = useRouter();  // ✅ ADD THIS LINE
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const [merchant, setMerchant] = useState<MerchantData | null>(null);
   const [loading, setLoading] = useState(true);
